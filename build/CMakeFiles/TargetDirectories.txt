@@ -1,0 +1,9 @@
+/home/mica/Desktop/clean-start/build/CMakeFiles/rebuild_cache.dir
+/home/mica/Desktop/clean-start/build/CMakeFiles/edit_cache.dir
+/home/mica/Desktop/clean-start/build/CMakeFiles/app.dir
+/home/mica/Desktop/clean-start/build/vk_core/CMakeFiles/rebuild_cache.dir
+/home/mica/Desktop/clean-start/build/vk_core/CMakeFiles/edit_cache.dir
+/home/mica/Desktop/clean-start/build/vk_core/CMakeFiles/vk_core.dir
+/home/mica/Desktop/clean-start/build/renderer/CMakeFiles/rebuild_cache.dir
+/home/mica/Desktop/clean-start/build/renderer/CMakeFiles/edit_cache.dir
+/home/mica/Desktop/clean-start/build/renderer/CMakeFiles/renderer.dir

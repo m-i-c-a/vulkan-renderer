@@ -1,0 +1,1 @@
+/usr/bin/c++  -g  -rdynamic CMakeFiles/app.dir/main.cpp.o  -o app  -Wl,-rpath,/home/mica/Documents/vulkan_downloads/1.3.231.2/x86_64/lib /usr/lib/x86_64-linux-gnu/libglfw.so.3.3 vk_core/libvk_core.a renderer/librenderer.a vk_core/libvk_core.a /home/mica/Documents/vulkan_downloads/1.3.231.2/x86_64/lib/libvulkan.so 

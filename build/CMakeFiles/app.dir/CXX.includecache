@@ -1,0 +1,44 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../renderer/include/Renderable.hpp
+inttypes.h
+-
+vector
+-
+
+../renderer/include/renderer.hpp
+Renderable.hpp
+../renderer/include/Renderable.hpp
+vulkan/vulkan.h
+-
+stdint.h
+-
+
+../vk_core/include/vk_core.hpp
+vulkan/vulkan.h
+-
+string_view
+-
+
+/home/mica/Desktop/clean-start/main.cpp
+vk_core.hpp
+/home/mica/Desktop/clean-start/vk_core.hpp
+renderer.hpp
+/home/mica/Desktop/clean-start/renderer.hpp
+GLFW/glfw3.h
+-
+assert.h
+-
+vector
+-
+unordered_map
+-
+string
+-
+
