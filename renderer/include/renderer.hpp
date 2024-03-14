@@ -44,7 +44,7 @@ namespace renderer
         uint32_t index_count;
         const uint8_t* index_data;
         uint32_t index_stride;
-        const std::vector<uint8_t> material_data;
+        std::vector<uint8_t> material_data;
         const std::vector<uint8_t> draw_data;
     };
 

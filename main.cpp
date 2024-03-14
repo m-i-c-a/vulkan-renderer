@@ -7,6 +7,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <string.h>
     
 constexpr uint32_t window_width = 400u;
 constexpr uint32_t window_height = 400u;
@@ -121,7 +122,7 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
 
     const uint32_t index_data[3] = { 0, 1, 2 };
 
-    const renderer::MeshInitInfo mesh_init_info {
+    renderer::MeshInitInfo mesh_init_info {
         .sortbin_id = 0,
         .vertex_stride = 12,
         .vertex_count = 3,
@@ -132,6 +133,10 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
         .material_data = {},
         .draw_data = {},
     };
+
+    mesh_init_info.material_data.resize(12, 0);
+    std::vector<float> material_data {{ 0.0, 1.0, 0.0 }};
+    memcpy(mesh_init_info.material_data.data(), material_data.data(), 12);
 
     const renderer::Renderable renderable = renderer::load_mesh(mesh_init_info);
 

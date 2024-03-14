@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #include <string_view>
+#include <vector>
 
 class GLFWwindow;
 
@@ -31,8 +32,14 @@ namespace vk_core
     void reset_command_pool(const VkCommandPool pool);
     void destroy_command_pool(const VkCommandPool pool);
 
+    VkDescriptorPool create_desc_pool(const VkDescriptorPoolCreateInfo& create_info);
+    void destroy_desc_pool(const VkDescriptorPool vk_handle_desc_pool);
+
     VkDescriptorSetLayout create_desc_set_layout(const VkDescriptorSetLayoutCreateInfo& create_info);
     void destroy_desc_set_layout(const VkDescriptorSetLayout vk_handle_desc_set_layout);
+
+    std::vector<VkDescriptorSet> allocate_desc_sets(const VkDescriptorSetAllocateInfo& alloc_info);
+    void update_desc_sets(const uint32_t update_count, const VkWriteDescriptorSet* const p_write_desc_set_list, const uint32_t copy_count, const VkCopyDescriptorSet* const p_copy_desc_set_list);
 
     VkPipelineLayout create_pipeline_layout(const VkPipelineLayoutCreateInfo& create_info);
     void destroy_pipeline_layout(const VkPipelineLayout vk_handle_pipeline_layout);

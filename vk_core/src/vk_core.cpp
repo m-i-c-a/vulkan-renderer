@@ -804,6 +804,18 @@ VkCommandBuffer allocate_command_buffer( const VkCommandPool cmd_pool, const VkC
     return cmd_buff;
 }
 
+VkDescriptorPool create_desc_pool(const VkDescriptorPoolCreateInfo& create_info)
+{
+    VkDescriptorPool vk_handle_desc_pool = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateDescriptorPool(vk_handle_device, &create_info, nullptr, &vk_handle_desc_pool));
+    return vk_handle_desc_pool;
+}
+
+void destroy_desc_pool(const VkDescriptorPool vk_handle_desc_pool)
+{
+    vkDestroyDescriptorPool(vk_handle_device, vk_handle_desc_pool, nullptr);
+}
+
 VkDescriptorSetLayout create_desc_set_layout(const VkDescriptorSetLayoutCreateInfo& create_info)
 {
     VkDescriptorSetLayout vk_handle_desc_set_layout = VK_NULL_HANDLE;
@@ -814,6 +826,18 @@ VkDescriptorSetLayout create_desc_set_layout(const VkDescriptorSetLayoutCreateIn
 void destroy_desc_set_layout(const VkDescriptorSetLayout vk_handle_desc_set_layout)
 {
     vkDestroyDescriptorSetLayout(vk_handle_device, vk_handle_desc_set_layout, nullptr);
+}
+
+std::vector<VkDescriptorSet> allocate_desc_sets(const VkDescriptorSetAllocateInfo& alloc_info)
+{
+    std::vector<VkDescriptorSet> vk_handle_desc_set_list(alloc_info.descriptorSetCount, VK_NULL_HANDLE);
+    VK_CHECK(vkAllocateDescriptorSets(vk_handle_device, &alloc_info, vk_handle_desc_set_list.data()));
+    return vk_handle_desc_set_list;
+}
+
+void update_desc_sets(const uint32_t update_count, const VkWriteDescriptorSet* const p_write_desc_set_list, const uint32_t copy_count, const VkCopyDescriptorSet* const p_copy_desc_set_list)
+{
+    vkUpdateDescriptorSets(vk_handle_device, update_count, p_write_desc_set_list, copy_count, p_copy_desc_set_list);
 }
 
 VkPipelineLayout create_pipeline_layout(const VkPipelineLayoutCreateInfo& create_info)

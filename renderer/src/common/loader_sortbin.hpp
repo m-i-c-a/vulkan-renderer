@@ -413,7 +413,7 @@ void process_pipeline_state(const JSONInfo_SortBin::State& sortbin_state, Pipeli
     pipeline_info.depth_stencil_state_create_info = depth_stencil_create_info;
 }
 
-void process_reflection_state(const JSONInfo_SortBinReflection::State& sortbin_reflection_state, PipelineInfo& pipeline_info)
+void process_reflection_state(const JSONInfo_SortBinReflection::State& sortbin_reflection_state, PipelineInfo& pipeline_info, const VkDescriptorSetLayout vk_handle_global_desc_set_layout)
 {
     pipeline_info.vk_handle_desc_set_layout_list.clear();
 
@@ -484,8 +484,8 @@ void process_reflection_state(const JSONInfo_SortBinReflection::State& sortbin_r
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0x0,
-        .setLayoutCount = static_cast<uint32_t>(pipeline_info.vk_handle_desc_set_layout_list.size()),
-        .pSetLayouts = pipeline_info.vk_handle_desc_set_layout_list.data(),
+        .setLayoutCount = (vk_handle_global_desc_set_layout == VK_NULL_HANDLE) ? static_cast<uint32_t>(pipeline_info.vk_handle_desc_set_layout_list.size()) : 1,
+        .pSetLayouts = (vk_handle_global_desc_set_layout == VK_NULL_HANDLE) ? pipeline_info.vk_handle_desc_set_layout_list.data() : &vk_handle_global_desc_set_layout,
         .pushConstantRangeCount = static_cast<uint32_t>(push_const_ranges.size()),
         .pPushConstantRanges = push_const_ranges.data(),
     };

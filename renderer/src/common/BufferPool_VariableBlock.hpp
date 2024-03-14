@@ -38,6 +38,7 @@ protected:
     };
 
     const uint32_t m_frame_resource_count = 0;
+    const uint64_t m_per_frame_buffer_size = 0;
     VkBuffer m_vk_handle_buffer = VK_NULL_HANDLE;
     VkDeviceMemory m_vk_handle_memory = VK_NULL_HANDLE;
 
@@ -60,10 +61,12 @@ public:
     const std::vector<UploadInfo> get_queued_uploads(const uint32_t frame_resource_idx); 
 
     VkBuffer get_vk_handle_buffer() const { return m_vk_handle_buffer; }
+    VkDescriptorBufferInfo get_descriptor_buffer_info(const uint32_t frame_resource_idx) const;
 };
 
 BufferPool_VariableBlock::BufferPool_VariableBlock(const uint32_t frame_resource_count, const uint64_t per_frame_buffer_size)
     : m_frame_resource_count { frame_resource_count }
+    , m_per_frame_buffer_size { per_frame_buffer_size }
 {
     const VkBufferCreateInfo buffer_create_info {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -98,7 +101,7 @@ uint32_t BufferPool_VariableBlock::acquire_block(const uint32_t block_size)
 
     m_current_offset = std::ceil(static_cast<float>(m_current_offset) / static_cast<float>(block_size)) * block_size + block_size;
 
-    return m_current_offset / block_size;
+    return (m_current_offset / block_size) - 1;
 }
 
 void* BufferPool_VariableBlock::get_writable_block(const uint32_t block_size, const uint32_t block_id)
@@ -137,5 +140,16 @@ const std::vector<UploadInfo> BufferPool_VariableBlock::get_queued_uploads(const
 
    return upload_info_list;
 } 
+
+VkDescriptorBufferInfo BufferPool_VariableBlock::get_descriptor_buffer_info(const uint32_t frame_resource_idx) const
+{
+    const VkDescriptorBufferInfo buffer_info {
+        .buffer = m_vk_handle_buffer,
+        .offset = m_per_frame_buffer_size * frame_resource_idx,
+        .range = m_per_frame_buffer_size
+    };
+
+    return buffer_info;
+};
 
 #endif // RENDERER_BUFFER_POOL_VARIABLE_BLOCK_HPP

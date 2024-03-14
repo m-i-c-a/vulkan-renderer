@@ -10,11 +10,14 @@
 #include "common/GeometryBuffer.hpp"
 #include "common/StagingBuffer.hpp"
 #include "common/BufferPool_VariableBlock.hpp"
+#include "common/UniformBuffer.hpp"
 
 #include "vk_core.hpp"
 #include "json.hpp"
 
 #include <vector>
+#include <array>
+#include <inttypes.h>
 
 static std::vector<RenderPass::Attachment> create_render_attachments(const renderer::InitInfo& init_info)
 {
@@ -242,7 +245,7 @@ static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& in
     return render_pass_list;
 }
 
-static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info, const std::vector<RenderPass>& render_pass_list, const std::vector<RenderPass::Attachment> render_attachment_list)
+static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info, const std::vector<RenderPass>& render_pass_list, const std::vector<RenderPass::Attachment> render_attachment_list, const VkDescriptorSetLayout vk_handle_global_desc_set_layout )
 {
     std::vector<SortBin> sortbin_list;
 
@@ -270,7 +273,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
 
         const JSONInfo_SortBinReflection::State& sortbin_reflection_state = sortbin_reflection_data.state_umap.at(sortbin_state.sortbin_name);
 
-        process_reflection_state(sortbin_reflection_state, pipeline_info);
+        process_reflection_state(sortbin_reflection_state, pipeline_info, vk_handle_global_desc_set_layout);
 
         // Rendering Info
 
@@ -383,15 +386,16 @@ static std::vector<Mesh> global_mesh_list;
 static GeometryBuffer* global_geometry_buffer;
 static StagingBuffer* global_staging_buffer;
 
+static UniformBuffer* global_frame_uniform_buffer;;
 static BufferPool_VariableBlock* global_material_data_buffer;
 static BufferPool_VariableBlock* global_draw_data_buffer;
 
+static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
+static VkDescriptorPool vk_handle_global_desc_pool;
+static std::vector<VkDescriptorSet> vk_handle_global_desc_set_list;
+
 void init(const InitInfo& init_info)
 {
-    global_render_attachment_list = create_render_attachments(init_info);
-    global_render_pass_list = create_render_passes(init_info);
-    global_sortbin_list = create_sortbins(init_info, global_render_pass_list, global_render_attachment_list);
-
     global_geometry_buffer = new GeometryBuffer({
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
@@ -408,28 +412,157 @@ void init(const InitInfo& init_info)
     global_material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
     global_draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
 
-    VkDescriptorSetAllocateInfo desc_set_alloc_info {
-        // .sType;
-        // .pNext;
-        // .descriptorPool;
-        // .descriptorSetCount;
-        // .pSetLayouts;
+    std::unordered_map<std::string, DescriptorVariable> frame_uniform_refl_set {{
+        { "proj_mat", { "proj_mat", 0, 64 } },
+        { "view_mat", { "view_mat", 64, 128 } },
+    }};
+
+    global_frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
+
+    // Need to have JSON with reflection info for all files in shared.glsl (the sortbin is not responsible for these resources)
+
+    // There is only one descriptor set.
+    // All sortbins MUST match the template for set 0 below.
+    // Sortbin json files only need to have member descriptions for block in the template.
+
+    // Set 0
+    // -- Frame UBO
+    // -- -- For runtime frame info
+    // -- -- Located in shared.glsl
+    // -- Sortbin SSBO
+    // -- -- For runtime sortbin info
+    // -- -- Indexed by push_consts.sortbin_ID
+    // -- -- Located in <sortbin> shader file
+    // -- Material SSBO
+    // -- -- For model matertial info
+    // -- -- Indexed by draw_data.mat_ID
+    // -- -- Located in <sortbin> shader file
+    // -- Draw SSBO
+    // -- -- For model material info
+    // -- -- Indexed by instance ID
+    // -- -- Located in <sortbin> shader file
+
+    // Create desc set layout
+
+    const std::array<VkDescriptorSetLayoutBinding, 3> desc_set_layout_binding_list {{
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
+            .pImmutableSamplers = nullptr,
+        },
+        {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
+            .pImmutableSamplers = nullptr,
+        },
+        {
+            .binding = 2,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
+            .pImmutableSamplers = nullptr,
+        }
+    }};
+
+    const VkDescriptorSetLayoutCreateInfo desc_set_layout_create_info {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0x0,
+        .bindingCount = static_cast<uint32_t>(desc_set_layout_binding_list.size()),
+        .pBindings = desc_set_layout_binding_list.data(),
     };
 
-    VkWriteDescriptorSet write_desc_set {
-        // VkStructureType                  sType;
-        // const void*                      pNext;
-        // VkDescriptorSet                  dstSet;
-        // uint32_t                         dstBinding;
-        // uint32_t                         dstArrayElement;
-        // uint32_t                         descriptorCount;
-        // VkDescriptorType                 descriptorType;
-        // const VkDescriptorImageInfo*     pImageInfo;
-        // const VkDescriptorBufferInfo*    pBufferInfo;
-        // const VkBufferView*              pTexelBufferView;
+    vk_handle_global_desc_set_layout = vk_core::create_desc_set_layout(desc_set_layout_create_info);
+
+    const std::array<VkDescriptorPoolSize, 2> desc_pool_sizes {{
+        {
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = init_info.frame_resource_count,
+        },
+        {
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = init_info.frame_resource_count * 2,
+        },
+    }};
+
+    const VkDescriptorPoolCreateInfo desc_pool_create_info {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0x0,
+        .maxSets = init_info.frame_resource_count,
+        .poolSizeCount = static_cast<uint32_t>(desc_pool_sizes.size()),
+        .pPoolSizes = desc_pool_sizes.data()
     };
 
-    // vkUpdateDescriptorSets()
+    vk_handle_global_desc_pool = vk_core::create_desc_pool(desc_pool_create_info);
+
+    const std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list(init_info.frame_resource_count, vk_handle_global_desc_set_layout);
+
+    const VkDescriptorSetAllocateInfo desc_set_alloc_info {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .descriptorPool = vk_handle_global_desc_pool,
+        .descriptorSetCount = static_cast<uint32_t>(vk_handle_desc_set_layout_list.size()),
+        .pSetLayouts = vk_handle_desc_set_layout_list.data()
+    };
+
+    vk_handle_global_desc_set_list = vk_core::allocate_desc_sets(desc_set_alloc_info);
+
+    for (uint32_t i = 0; i < init_info.frame_resource_count; i++)
+    {
+        const VkDescriptorBufferInfo frame_ubo_desc_buffer_info = global_frame_uniform_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo mat_ssbo_desc_buffer_info = global_material_data_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo draw_ssbo_desc_buffer_info = global_draw_data_buffer->get_descriptor_buffer_info(i);
+
+        std::array<VkWriteDescriptorSet, 3> write_desc_set_list {{
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &frame_ubo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &mat_ssbo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &draw_ssbo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            }
+        }};
+
+        vk_core::update_desc_sets(static_cast<uint32_t>(write_desc_set_list.size()), write_desc_set_list.data(), 0, nullptr);
+    }
+
+    global_render_attachment_list = create_render_attachments(init_info);
+    global_render_pass_list = create_render_passes(init_info);
+    global_sortbin_list = create_sortbins(init_info, global_render_pass_list, global_render_attachment_list, vk_handle_global_desc_set_layout);
 }
 
 void terminate()
@@ -481,6 +614,7 @@ void record_render_pass(const uint32_t renderpass_id, const VkCommandBuffer vk_h
             global_geometry_buffer->get_vk_handle_buffer(),
             global_geometry_buffer->get_vk_handle_buffer()
         },
+        .vk_handle_global_desc_set = vk_handle_global_desc_set_list[frame_resource_idx],
     };
 
     const VkBuffer vk_handle_geometry_buffer = global_geometry_buffer->get_vk_handle_buffer();

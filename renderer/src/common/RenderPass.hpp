@@ -1,35 +1,16 @@
 #ifndef RENDERER_RENDER_PASS_HPP
 #define RENDERER_RENDER_PASS_HPP
 
+#include "Renderable.hpp"
+#include "DescriptorVariable.hpp"
+#include "vk_core.hpp"
+
 #include  <vulkan/vulkan.h>
 
 #include <vector>
 #include <unordered_set>
 #include <bitset>
 #include <memory>
-
-#include "Renderable.hpp"
-#include "vk_core.hpp"
-
-struct DescriptorVariable 
-{
-    std::string name;
-    uint32_t offset;
-    uint32_t size;
-
-    bool operator==(const DescriptorVariable& other) const
-    {
-        return name == other.name;
-    };
-
-    struct Hash
-    {
-        std::size_t operator()(const DescriptorVariable& obj) const
-        {
-            return std::hash<std::string>()(obj.name);
-        }
-    };
-};
 
 struct SortBin
 {
@@ -49,7 +30,7 @@ struct SortBin
     std::unordered_set<DescriptorVariable, DescriptorVariable::Hash> descriptor_variable_material_set;
     std::unordered_set<DescriptorVariable, DescriptorVariable::Hash> descriptor_variable_draw_set;
 
-    uint64_t material_data_block_size = 0;
+    uint64_t material_data_block_size = 12; // should be 0, change back
     uint64_t draw_data_block_size = 4; // By default always constains material ID
 };
 
@@ -88,6 +69,7 @@ public:
         const std::vector<SortBin>& global_sortbin_list;
         const VkRect2D render_area;
         const std::array<VkBuffer, 3> vk_handle_index_buffer_list;
+        const VkDescriptorSet vk_handle_global_desc_set;
     };
 
     RenderPass(const std::vector<uint32_t>&& _supported_sortbin_id_list,
@@ -177,27 +159,29 @@ static void record_draws(const VkCommandBuffer vk_handle_cmd_buff,
 static void record_sortbin_draws(const VkCommandBuffer vk_handle_cmd_buff,
     const std::vector<SortBin>& sortbins,
     const std::vector<uint32_t>& supported_sortbin_ids,
-    const std::array<VkBuffer, 3>& vk_handle_index_buffer_list)
+    const std::array<VkBuffer, 3>& vk_handle_index_buffer_list,
+    const VkDescriptorSet vk_handle_global_desc_set)
 {
     if (sortbins.empty() || supported_sortbin_ids.empty())
     {
         return;
     }
+
         
     for (const uint32_t sortbin_id : supported_sortbin_ids)
     {
         const SortBin& sortbin = sortbins[sortbin_id];
 
+        vkCmdBindDescriptorSets(vk_handle_cmd_buff,
+            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+            sortbins[supported_sortbin_ids[0]].vk_handle_pipeline_layout,
+            0, 1, 
+            &vk_handle_global_desc_set,
+            0, nullptr);
+
         vkCmdBindPipeline(vk_handle_cmd_buff, 
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             sortbin.vk_handle_pipeline);
-
-        vkCmdBindDescriptorSets(vk_handle_cmd_buff,
-            VK_PIPELINE_BIND_POINT_GRAPHICS, 
-            sortbin.vk_handle_pipeline_layout,
-            0, 1, 
-            &sortbin.vk_handle_desc_set,
-            0, nullptr);
 
         if (!sortbin.draw_list_u32.empty())
         {
@@ -284,7 +268,7 @@ void RenderPass::record(const RenderPass::RecordInfo& record_info) const
 
     vkCmdBeginRendering(record_info.vk_handle_cmd_buff, &rendering_info);
 
-    record_sortbin_draws(record_info.vk_handle_cmd_buff, record_info.global_sortbin_list, supported_sortbin_id_list, record_info.vk_handle_index_buffer_list);
+    record_sortbin_draws(record_info.vk_handle_cmd_buff, record_info.global_sortbin_list, supported_sortbin_id_list, record_info.vk_handle_index_buffer_list, record_info.vk_handle_global_desc_set);
 
     vkCmdEndRendering(record_info.vk_handle_cmd_buff);
 }
