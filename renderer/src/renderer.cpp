@@ -360,6 +360,10 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
             .vertex_type = 0,
             .per_draw_data_type = 0,
             .vk_handle_desc_set_layout_list = pipeline_info.vk_handle_desc_set_layout_list,
+            .descriptor_variable_material_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).variables,
+            .descriptor_variable_draw_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).variables,
+            .material_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).size,
+            .draw_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).size,
         };
 
         sortbin_list.push_back(sortbin);
@@ -374,76 +378,8 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
     return sortbin_list;
 }
 
-namespace renderer
+static VkDescriptorSetLayout create_desc_set_layout()
 {
-
-static std::vector<RenderPass::Attachment> global_render_attachment_list;
-static std::vector<RenderPass> global_render_pass_list;
-static std::vector<SortBin> global_sortbin_list;
-static std::vector<Mesh> global_mesh_list; 
-
-
-static GeometryBuffer* global_geometry_buffer;
-static StagingBuffer* global_staging_buffer;
-
-static UniformBuffer* global_frame_uniform_buffer;;
-static BufferPool_VariableBlock* global_material_data_buffer;
-static BufferPool_VariableBlock* global_draw_data_buffer;
-
-static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
-static VkDescriptorPool vk_handle_global_desc_pool;
-static std::vector<VkDescriptorSet> vk_handle_global_desc_set_list;
-
-void init(const InitInfo& init_info)
-{
-    global_geometry_buffer = new GeometryBuffer({
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0x0,
-        .size = 1024 * 1024, 
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = nullptr
-    });
-
-    global_staging_buffer = new StagingBuffer(1024 * 1024);
-
-    global_material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
-    global_draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
-
-    std::unordered_map<std::string, DescriptorVariable> frame_uniform_refl_set {{
-        { "proj_mat", { "proj_mat", 0, 64 } },
-        { "view_mat", { "view_mat", 64, 128 } },
-    }};
-
-    global_frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
-
-    // Need to have JSON with reflection info for all files in shared.glsl (the sortbin is not responsible for these resources)
-
-    // There is only one descriptor set.
-    // All sortbins MUST match the template for set 0 below.
-    // Sortbin json files only need to have member descriptions for block in the template.
-
-    // Set 0
-    // -- Frame UBO
-    // -- -- For runtime frame info
-    // -- -- Located in shared.glsl
-    // -- Sortbin SSBO
-    // -- -- For runtime sortbin info
-    // -- -- Indexed by push_consts.sortbin_ID
-    // -- -- Located in <sortbin> shader file
-    // -- Material SSBO
-    // -- -- For model matertial info
-    // -- -- Indexed by draw_data.mat_ID
-    // -- -- Located in <sortbin> shader file
-    // -- Draw SSBO
-    // -- -- For model material info
-    // -- -- Indexed by instance ID
-    // -- -- Located in <sortbin> shader file
-
-    // Create desc set layout
-
     const std::array<VkDescriptorSetLayoutBinding, 3> desc_set_layout_binding_list {{
         {
             .binding = 0,
@@ -476,16 +412,19 @@ void init(const InitInfo& init_info)
         .pBindings = desc_set_layout_binding_list.data(),
     };
 
-    vk_handle_global_desc_set_layout = vk_core::create_desc_set_layout(desc_set_layout_create_info);
+    return vk_core::create_desc_set_layout(desc_set_layout_create_info);
+}
 
+static VkDescriptorPool create_desc_pool(const uint32_t frame_resource_count)
+{
     const std::array<VkDescriptorPoolSize, 2> desc_pool_sizes {{
         {
             .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = init_info.frame_resource_count,
+            .descriptorCount = frame_resource_count,
         },
         {
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = init_info.frame_resource_count * 2,
+            .descriptorCount = frame_resource_count * 2,
         },
     }};
 
@@ -493,36 +432,42 @@ void init(const InitInfo& init_info)
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0x0,
-        .maxSets = init_info.frame_resource_count,
+        .maxSets = frame_resource_count,
         .poolSizeCount = static_cast<uint32_t>(desc_pool_sizes.size()),
         .pPoolSizes = desc_pool_sizes.data()
     };
 
-    vk_handle_global_desc_pool = vk_core::create_desc_pool(desc_pool_create_info);
+    return vk_core::create_desc_pool(desc_pool_create_info);
+}
 
-    const std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list(init_info.frame_resource_count, vk_handle_global_desc_set_layout);
+static std::vector<VkDescriptorSet> create_desc_sets(const uint32_t frame_resource_count, const VkDescriptorSetLayout vk_handle_desc_set_layout, const VkDescriptorPool vk_handle_desc_pool)
+{
+    const std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list(frame_resource_count, vk_handle_desc_set_layout);
 
     const VkDescriptorSetAllocateInfo desc_set_alloc_info {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .pNext = nullptr,
-        .descriptorPool = vk_handle_global_desc_pool,
+        .descriptorPool = vk_handle_desc_pool,
         .descriptorSetCount = static_cast<uint32_t>(vk_handle_desc_set_layout_list.size()),
         .pSetLayouts = vk_handle_desc_set_layout_list.data()
     };
 
-    vk_handle_global_desc_set_list = vk_core::allocate_desc_sets(desc_set_alloc_info);
+    return vk_core::allocate_desc_sets(desc_set_alloc_info);
+}
 
-    for (uint32_t i = 0; i < init_info.frame_resource_count; i++)
+static void update_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list)
+{
+    for (uint32_t i = 0; i < frame_resource_count; i++)
     {
-        const VkDescriptorBufferInfo frame_ubo_desc_buffer_info = global_frame_uniform_buffer->get_descriptor_buffer_info(i);
-        const VkDescriptorBufferInfo mat_ssbo_desc_buffer_info = global_material_data_buffer->get_descriptor_buffer_info(i);
-        const VkDescriptorBufferInfo draw_ssbo_desc_buffer_info = global_draw_data_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo frame_ubo_desc_buffer_info = frame_uniform_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo mat_ssbo_desc_buffer_info = material_data_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo draw_ssbo_desc_buffer_info = draw_data_buffer->get_descriptor_buffer_info(i);
 
-        std::array<VkWriteDescriptorSet, 3> write_desc_set_list {{
+        const std::array<VkWriteDescriptorSet, 3> write_desc_set_list {{
             {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .pNext = nullptr,
-                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstSet = vk_handle_desc_set_list[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -534,7 +479,7 @@ void init(const InitInfo& init_info)
             {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .pNext = nullptr,
-                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstSet = vk_handle_desc_set_list[i],
                 .dstBinding = 1,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -546,7 +491,7 @@ void init(const InitInfo& init_info)
             {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .pNext = nullptr,
-                .dstSet = vk_handle_global_desc_set_list[i],
+                .dstSet = vk_handle_desc_set_list[i],
                 .dstBinding = 2,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -559,6 +504,142 @@ void init(const InitInfo& init_info)
 
         vk_core::update_desc_sets(static_cast<uint32_t>(write_desc_set_list.size()), write_desc_set_list.data(), 0, nullptr);
     }
+}
+
+static uint32_t upload_block(BufferPool_VariableBlock* buffer, const uint32_t block_size, const std::vector<uint8_t>& data, const uint32_t mat_ID = UINT32_MAX)
+{
+    uint32_t block_ID = buffer->acquire_block(block_size); 
+    void* block_ptr = buffer->get_writable_block(block_size, block_ID);
+
+    if ( mat_ID == UINT32_MAX )
+    {
+        memcpy(block_ptr, data.data(), block_size);
+    }
+    else
+    {
+        memcpy(static_cast<uint8_t*>(block_ptr), data.data(), block_size - sizeof(uint32_t));
+        memcpy(block_ptr + (block_size - sizeof(uint32_t)), &mat_ID, sizeof(uint32_t));
+    }
+
+    return block_ID;
+}
+
+static void queue_uploads_to_staging_buffer(GeometryBuffer* buffer, StagingBuffer* staging_buffer)
+{
+    const std::vector<UploadInfo> queued_uploads = buffer->get_queued_uploads();
+
+    for (const UploadInfo& upload_info : queued_uploads)
+    {
+        const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
+        staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
+        LOG("Geometry queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
+    }
+}
+
+static bool queue_uploads_to_staging_buffer(BufferPool_VariableBlock* buffer, StagingBuffer* staging_buffer, const uint32_t frame_resource_idx)
+{
+    const std::vector<UploadInfo> queued_uploads = buffer->get_queued_uploads(frame_resource_idx);
+
+    for (const UploadInfo& upload_info : queued_uploads)
+    {
+        const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
+        staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
+        LOG("Uniform queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
+    }
+
+    return !queued_uploads.empty();
+}
+
+namespace renderer
+{
+// There is only one descriptor set.
+// All sortbins MUST match the template for set 0 below.
+// Sortbin json files only need to have member descriptions for block in the template.
+
+// Set 0
+// -- Frame UBO
+// -- -- For runtime frame info
+// -- -- Located in shared.glsl
+// -- Sortbin SSBO
+// -- -- For runtime sortbin info
+// -- -- Indexed by push_consts.sortbin_ID
+// -- -- Located in <sortbin> shader file
+// -- Material SSBO
+// -- -- For model matertial info
+// -- -- Indexed by draw_data.mat_ID
+// -- -- Located in <sortbin> shader file
+// -- Draw SSBO
+// -- -- For model material info
+// -- -- Indexed by instance ID
+// -- -- Located in <sortbin> shader file
+
+// A Renderable is the combination of a mesh_id, material_id, draw_id, and a supported_sortbin_set_idx. It is the summation
+// if all the data needed to render an object. 
+
+// A Entity is the combination of a renderable_id and a sortbin_id. We distinguish an Entitiy from a Renderable so that
+// sortbins can be changed at runtime if needed. A Renderable can be added to various sortbins, as long as the 
+// vertex input / mateiral / draw states match. The separation allows a toggling to wireframe or different shaders at runtime.
+
+// Startup
+// -- Group sortbins into sets based on vertex input / material / draw states
+
+// Load a GLTF model (contains sortbin_id)
+// -- Create renderable_id
+// -- Create mesh_id
+// -- Create material_id
+// -- Create draw_id
+// -- Add supported_sortbin_set_id to renderable
+
+
+
+
+static std::vector<Renderable> global_renderable_list {};
+static std::vector<Mesh> global_mesh_list; 
+
+static std::vector<RenderPass::Attachment> global_render_attachment_list;
+static std::vector<RenderPass> global_render_pass_list;
+static std::vector<SortBin> global_sortbin_list;
+
+
+static GeometryBuffer* global_geometry_buffer;
+static StagingBuffer* global_staging_buffer;
+
+static UniformBuffer* global_frame_uniform_buffer;;
+static BufferPool_VariableBlock* global_material_data_buffer;
+static BufferPool_VariableBlock* global_draw_data_buffer;
+
+static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
+static VkDescriptorPool vk_handle_global_desc_pool;
+static std::vector<VkDescriptorSet> vk_handle_global_desc_set_list;
+
+void init(const InitInfo& init_info)
+{
+    const VkBufferCreateInfo geom_buffer_create_info {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0x0,
+        .size = 1024 * 1024, 
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr
+    };
+
+    const std::unordered_map<std::string, DescriptorVariable> frame_uniform_refl_set {{
+        { "proj_mat", { "proj_mat", 0, 64 } },
+        { "view_mat", { "view_mat", 64, 128 } },
+    }};
+
+    global_geometry_buffer = new GeometryBuffer(geom_buffer_create_info);
+    global_staging_buffer = new StagingBuffer(1024 * 1024);
+    global_frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
+    global_material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
+    global_draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
+
+    vk_handle_global_desc_set_layout = create_desc_set_layout();
+    vk_handle_global_desc_pool = create_desc_pool(init_info.frame_resource_count);
+    vk_handle_global_desc_set_list = create_desc_sets(init_info.frame_resource_count, vk_handle_global_desc_set_layout, vk_handle_global_desc_pool);
+    update_desc_sets(init_info.frame_resource_count, global_frame_uniform_buffer, global_material_data_buffer, global_draw_data_buffer, vk_handle_global_desc_set_list);
 
     global_render_attachment_list = create_render_attachments(init_info);
     global_render_pass_list = create_render_passes(init_info);
@@ -630,8 +711,14 @@ VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_
 }
 
 
-void add_renderable_to_sortbin(const Renderable& renderable)
+std::pair<uint32_t, uint16_t> copy_renderable(const uint32_t copy_from_renderable_id) { return {}; }
+bool renderable_supports_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id) { return false; }
+void delete_renderable(const uint32_t renderable_id) {}
+
+
+void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id)
 {
+    const Renderable& renderable = global_renderable_list[renderable_id];
     const Mesh& mesh = global_mesh_list[renderable.mesh_id];
 
     const DrawInfo draw_info {
@@ -669,74 +756,142 @@ void add_renderable_to_sortbin(const Renderable& renderable)
     };
 }
 
-Renderable load_mesh(const MeshInitInfo& mesh_init_info)
+
+std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx)
 {
+    ASSERT(global_geometry_buffer != nullptr, "Global geometry buffer not initialized!\n");
+    ASSERT(global_sortbin_list.size() > init_info.default_sortbin_id, "Default sortbin ID out of range!\n");
+
+    const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_id];
+
+    ASSERT(sortbin.material_data_block_size == init_info.material_data.size(), "Material data size mismatch!\n");
+    ASSERT(sortbin.draw_data_block_size == init_info.draw_data.size() + sizeof(uint32_t), "Draw data size mismatch!\n");
+
+    const uint32_t first_index = static_cast<uint32_t>(global_geometry_buffer->queue_upload(
+        init_info.index_stride,
+        init_info.index_count,
+        std::vector<uint8_t>(init_info.index_data, init_info.index_data + init_info.index_count * init_info.index_stride)));
+
+    const int32_t vertex_offset = global_geometry_buffer->queue_upload(
+        init_info.vertex_stride,
+        init_info.vertex_count,
+        std::vector<uint8_t>(init_info.vertex_data, init_info.vertex_data + init_info.vertex_count * init_info.vertex_stride));
+
+    const uint32_t mesh_ID = static_cast<uint32_t>(global_mesh_list.size());
+    const uint32_t mat_ID = upload_block(global_material_data_buffer, sortbin.material_data_block_size, init_info.material_data);
+    const uint32_t draw_ID = upload_block(global_draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data, mat_ID);
+    const uint32_t renderable_ID = static_cast<uint32_t>(global_renderable_list.size());
+
     const Mesh mesh {
-        .sortbin_id = mesh_init_info.sortbin_id,
-        .index_count = mesh_init_info.index_count,
-        .vertex_count = mesh_init_info.vertex_count,
+        .index_count = init_info.index_count,
+        .vertex_count = init_info.vertex_count,
         .first_vertex = 0,
-        .first_index = static_cast<uint32_t>(global_geometry_buffer->queue_upload(mesh_init_info.index_stride, mesh_init_info.index_count, std::vector<uint8_t>(mesh_init_info.index_data, mesh_init_info.index_data + mesh_init_info.index_count * mesh_init_info.index_stride))),
-        .vertex_offset = global_geometry_buffer->queue_upload(mesh_init_info.vertex_stride, mesh_init_info.vertex_count, std::vector<uint8_t>(mesh_init_info.vertex_data, mesh_init_info.vertex_data + mesh_init_info.vertex_count * mesh_init_info.vertex_stride)),
-        .index_stride = mesh_init_info.index_stride
+        .first_index = first_index,
+        .vertex_offset = vertex_offset,
+        .index_stride = init_info.index_stride,
     };
 
-    const SortBin& sortbin = global_sortbin_list[mesh.sortbin_id];
-    ASSERT(sortbin.material_data_block_size == mesh_init_info.material_data.size(), "Material data size mismatch!\n");
-    ASSERT(sortbin.draw_data_block_size == mesh_init_info.draw_data.size() + sizeof(uint32_t), "Draw data size mismatch!\n");
-
-    const uint32_t mat_ID = global_material_data_buffer->acquire_block(sortbin.material_data_block_size);
-    void* mat_data_ptr = global_material_data_buffer->get_writable_block(sortbin.material_data_block_size, mat_ID);
-    memcpy(mat_data_ptr, mesh_init_info.material_data.data(), sortbin.material_data_block_size);
-
-    const uint32_t draw_ID = global_draw_data_buffer->acquire_block(sortbin.draw_data_block_size);
-    void* draw_data_ptr = global_draw_data_buffer->get_writable_block(sortbin.draw_data_block_size, draw_ID);
-    memcpy(draw_data_ptr, &mat_ID, sizeof(uint32_t));
-    memcpy(static_cast<uint8_t*>(draw_data_ptr) + sizeof(uint32_t), mesh_init_info.draw_data.data(), sortbin.draw_data_block_size - sizeof(uint32_t));
-
-    const std::vector<UploadInfo> queued_geometry_upload_info_list = global_geometry_buffer->get_queued_uploads();
-    const std::vector<UploadInfo> queued_material_data_upload_info_list = global_material_data_buffer->get_queued_uploads(0);
-    const std::vector<UploadInfo> queued_draw_data_upload_info_list = global_draw_data_buffer->get_queued_uploads(0);
-
-    for (const UploadInfo& upload_info : queued_geometry_upload_info_list)
-    {
-        const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
-        global_staging_buffer->queue_upload(global_geometry_buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-    }
-
-    for (const UploadInfo& upload_info : queued_material_data_upload_info_list)
-    {
-        const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
-        global_staging_buffer->queue_upload(global_material_data_buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-    }
-
-    for (const UploadInfo& upload_info : queued_draw_data_upload_info_list)
-    {
-        const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
-        global_staging_buffer->queue_upload(global_draw_data_buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-    }
-
     const Renderable renderable {
-        .mesh_id = static_cast<uint32_t>(global_mesh_list.size()),
+        .mesh_id = mesh_ID,
+        .material_id = mat_ID,
         .draw_id = draw_ID,
-        .bsphere_origin = {0.0f, 0.0f, 0.0f},
-        .bsphere_radius = 0.0f,
+        .default_sortbin_id = init_info.default_sortbin_id,
+        .supported_sortbin_set_id = 0,
     };
 
     global_mesh_list.push_back(mesh);
+    global_renderable_list.push_back(renderable);
 
-    return renderable;
+    queue_uploads_to_staging_buffer(global_geometry_buffer, global_staging_buffer);
+    queue_uploads_to_staging_buffer(global_material_data_buffer, global_staging_buffer, frame_resource_idx);
+    queue_uploads_to_staging_buffer(global_draw_data_buffer, global_staging_buffer, frame_resource_idx);
+
+    return {renderable_ID, renderable.default_sortbin_id};
 }
 
-
-void flush_geometry_uploads(const VkCommandBuffer vk_handle_cmd_buff)
+void flush_coherent_buffer_uploads(const BufferType buffer_type, const uint32_t frame_resource_idx)
 {
-   global_staging_buffer->flush(vk_handle_cmd_buff); 
+    switch (buffer_type)
+    {
+        case BufferType::eFrame:
+        {
+            global_frame_uniform_buffer->flush_updates(frame_resource_idx);
+            break;
+        }
+        default:
+        {
+            LOG("Warning - Buffer type %d is not coherent!\n", (int)buffer_type);
+            break;
+        }
+    };
 }
 
-void flush_draw_data_uploads(const VkCommandBuffer vk_handle_cmd_buff)
+bool flush_buffer_uploads_to_staging(const BufferType buffer_type, const uint32_t frame_resource_idx)
 {
-   global_staging_buffer->flush(vk_handle_cmd_buff); 
+    bool has_uploads = false;
+    switch (buffer_type)
+    {
+        case BufferType::eMaterial:
+        {
+            has_uploads = queue_uploads_to_staging_buffer(global_material_data_buffer, global_staging_buffer, frame_resource_idx);
+            break;
+        }
+        case BufferType::eDraw:
+        {
+            has_uploads = queue_uploads_to_staging_buffer(global_draw_data_buffer, global_staging_buffer, frame_resource_idx);
+            break;
+        }
+        case BufferType::eSortbin:
+        default:
+        {
+            LOG("Warning - Buffer type %d does not support staging buffer upload!\n", (int)buffer_type);
+            break;
+        }
+    }
+
+    return has_uploads;
+}
+
+void flush_staging_to_device(const VkCommandBuffer vk_handle_cmd_buff)
+{
+    global_staging_buffer->flush(vk_handle_cmd_buff);
+}
+
+void update_uniform(const BufferType buffer_type, const std::string& uniform_name, const void* const value, const uint32_t data_id)
+{
+    switch (buffer_type)
+    {
+        case BufferType::eFrame:
+        {
+            global_frame_uniform_buffer->update_member(uniform_name, value);
+            break;
+        }
+        case BufferType::eDraw:
+        {
+            ASSERT(global_renderable_list.size() > data_id, "Renderable ID out of range!\n");
+            const Renderable& renderable = global_renderable_list[data_id]; 
+
+            ASSERT(global_sortbin_list.size() > renderable.default_sortbin_id, "Renderable ID out of range!\n");
+            const SortBin& sortbin = global_sortbin_list[renderable.default_sortbin_id];
+
+            const auto it = sortbin.descriptor_variable_draw_umap.find(uniform_name);
+            ASSERT(it != sortbin.descriptor_variable_draw_umap.end(), "Member name `%s` not found in sortbin descriptor variable list!\n", uniform_name.c_str());
+
+            void* draw_data_ptr = global_draw_data_buffer->get_writable_block(sortbin.draw_data_block_size, renderable.draw_id);
+            memcpy(static_cast<uint8_t*>(draw_data_ptr) + it->second.offset, value, it->second.size);
+
+            LOG("Updating uniform member (%u, %s, %u, %u)\n", data_id, uniform_name.c_str(), it->second.offset, it->second.size);
+
+            break;
+        }
+        case BufferType::eSortbin:
+        case BufferType::eMaterial:
+        default:
+        {
+            LOG("Warning - Buffer type %d does not support uniform updates!\n", (int)buffer_type);
+            break;
+        }
+    };
 }
 
 }; // renderer

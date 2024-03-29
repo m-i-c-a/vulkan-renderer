@@ -138,6 +138,8 @@ const std::vector<UploadInfo> BufferPool_VariableBlock::get_queued_uploads(const
        upload_info_list.push_back(upload_info);
    }
 
+   frame_dirty_blocks.clear();
+
    return upload_info_list;
 } 
 

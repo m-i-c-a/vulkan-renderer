@@ -140,7 +140,8 @@ struct JSONInfo_SortBinReflection
         VkDescriptorType descriptor_type;
         uint32_t descriptor_count; 
         VkShaderStageFlags shader_stage_flags;
-        // std::unordered_set<DescriptorVariable> variables;
+        std::unordered_map<std::string, DescriptorVariable> variables;
+        uint32_t size = 0;
     };
 
     struct DescriptorSetState
@@ -181,6 +182,13 @@ struct JSONInfo_SortBinReflection
     std::unordered_map<std::string, State> state_umap;
 };
 
+void from_json(const nlohmann::json& json_data, DescriptorVariable& info)
+{
+    info.name = json_data.at("name").get<std::string>();
+    info.offset = json_data.at("offset").get<uint32_t>();
+    info.size = json_data.at("size").get<uint32_t>();
+}
+
 void from_json(const nlohmann::json& json_data, VkVertexInputBindingDescription& info)
 {
     info.binding = json_data.at("binding").get<uint32_t>();
@@ -213,6 +221,16 @@ void from_json(const nlohmann::json& json_data, JSONInfo_SortBinReflection::Desc
     {
         info.shader_stage_flags |= string_to_enum_VkShaderStageFlags(shader_stage_str);
     }
+
+    uint32_t size = 0;
+
+    for (const DescriptorVariable& variable : json_data.at("members"))
+    {
+        info.variables.emplace(variable.name, variable);
+        size = std::max(size, variable.offset + variable.size);
+    }
+
+    info.size = size;
 }
 
 void from_json(const nlohmann::json& json_data, JSONInfo_SortBinReflection::DescriptorSetState& info)

@@ -39,7 +39,7 @@ GeometryBuffer::GeometryBuffer(const VkBufferCreateInfo &create_info)
 
 int32_t GeometryBuffer::queue_upload(const uint32_t stride, const uint32_t count, std::vector<uint8_t>&& data)
 {
-    const int32_t nth_entity = std::ceil(m_buffer_offset / static_cast<float>(stride));
+    const int32_t nth_entity = m_buffer_offset == 0 ? 0 : std::ceil(m_buffer_offset / static_cast<float>(stride));
     m_buffer_offset = nth_entity * stride;
     const VkDeviceSize upload_size = count * stride;
 

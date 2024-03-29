@@ -8,7 +8,8 @@
 #include  <vulkan/vulkan.h>
 
 #include <vector>
-#include <unordered_set>
+#include <unordered_map>
+#include <string>
 #include <bitset>
 #include <memory>
 
@@ -27,8 +28,8 @@ struct SortBin
     std::vector<renderer::DrawInfo> draw_list;
 
     std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list;
-    std::unordered_set<DescriptorVariable, DescriptorVariable::Hash> descriptor_variable_material_set;
-    std::unordered_set<DescriptorVariable, DescriptorVariable::Hash> descriptor_variable_draw_set;
+    std::unordered_map<std::string, DescriptorVariable> descriptor_variable_material_umap;
+    std::unordered_map<std::string, DescriptorVariable> descriptor_variable_draw_umap;
 
     uint64_t material_data_block_size = 12; // should be 0, change back
     uint64_t draw_data_block_size = 4; // By default always constains material ID

@@ -2,18 +2,26 @@
 #include "renderer.hpp"
 
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include <assert.h>
 #include <vector>
 #include <unordered_map>
 #include <string>
 #include <string.h>
+
     
 constexpr uint32_t window_width = 400u;
 constexpr uint32_t window_height = 400u;
 constexpr uint32_t frame_resource_count = 1u;
 
-renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff);
+struct Entity
+{
+    const uint32_t renderable_id;
+    const uint16_t sortbin_id;
+};
+
+Entity load_entity(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff);
 void blit(const uint32_t frame_resource_idx, const VkCommandBuffer vk_handle_cmd_buff);
 
 int main()
@@ -42,9 +50,16 @@ int main()
     const VkCommandBuffer vk_handle_cmd_buff = vk_core::allocate_command_buffer(vk_handle_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     const VkFence vk_handle_swapchain_image_acquire_fence = vk_core::create_fence(0x0);
 
-    renderer::Renderable test_renderable = load_renderable(vk_handle_cmd_pool, vk_handle_cmd_buff);
+    glm::mat4x4 proj_mat { 1.0 };
+    glm::mat4x4 view_mat { 1.0 };
 
-    renderer::add_renderable_to_sortbin(test_renderable);
+    renderer::update_uniform(renderer::BufferType::eFrame, "proj_mat", &(proj_mat[0][0]));
+    renderer::update_uniform(renderer::BufferType::eFrame, "view_mat", &(proj_mat[0][0]));
+
+    Entity entity = load_entity(vk_handle_cmd_pool, vk_handle_cmd_buff);
+    // renderer::update_uniform(renderer::BufferType::eDraw, "model_mat", &(proj_mat[0][0]), entity.renderable_id);
+
+    renderer::add_renderable_to_sortbin(entity.renderable_id, entity.sortbin_id);
 
     uint32_t frame_idx = 0;
 
@@ -58,6 +73,11 @@ int main()
         vk_core::wait_for_fences(1, &vk_handle_swapchain_image_acquire_fence, VK_TRUE, UINT64_MAX);
         vk_core::reset_fences(1, &vk_handle_swapchain_image_acquire_fence);
 
+        bool uploads_pending = false;
+        renderer::flush_coherent_buffer_uploads(renderer::BufferType::eFrame, frame_resource_idx);
+        uploads_pending = renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eMaterial, frame_resource_idx);
+        uploads_pending = renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eDraw, frame_resource_idx);
+
         vk_core::reset_command_pool(vk_handle_cmd_pool);
 
         const VkCommandBufferBeginInfo cmd_buff_begin_info {
@@ -68,6 +88,13 @@ int main()
         };
 
         vkBeginCommandBuffer(vk_handle_cmd_buff, &cmd_buff_begin_info);
+
+        if (uploads_pending)
+        {
+            renderer::flush_staging_to_device(vk_handle_cmd_buff);
+
+            // Pipeline barrier
+        }
         
         // Bind Set 0
 
@@ -112,7 +139,7 @@ int main()
     return 0;
 }
 
-renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff)
+Entity load_entity(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff)
 {
     const float vertex_data[9] = {
         0.0, -0.5, 0.0,
@@ -122,8 +149,8 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
 
     const uint32_t index_data[3] = { 0, 1, 2 };
 
-    renderer::MeshInitInfo mesh_init_info {
-        .sortbin_id = 0,
+    renderer::RenderableInitInfo renderable_init_info {
+        .default_sortbin_id = 0,
         .vertex_stride = 12,
         .vertex_count = 3,
         .vertex_data = (uint8_t*)vertex_data,
@@ -134,11 +161,15 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
         .draw_data = {},
     };
 
-    mesh_init_info.material_data.resize(12, 0);
+    renderable_init_info.material_data.resize(12, 0);
     std::vector<float> material_data {{ 0.0, 1.0, 0.0 }};
-    memcpy(mesh_init_info.material_data.data(), material_data.data(), 12);
+    memcpy(renderable_init_info.material_data.data(), material_data.data(), 12);
 
-    const renderer::Renderable renderable = renderer::load_mesh(mesh_init_info);
+    renderable_init_info.draw_data.resize(64, 0);
+    glm::mat4x4 model_mat { 1.0 };
+    memcpy(renderable_init_info.draw_data.data(), &(model_mat[0][0]), 64);
+
+    const auto renderable_sortbin_id_pair = renderer::create_renderable(renderable_init_info, 0u);
 
     const VkCommandBufferBeginInfo cmd_buff_begin_info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -151,7 +182,7 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
     
     vkBeginCommandBuffer(vk_handle_cmd_buff, &cmd_buff_begin_info);
 
-    renderer::flush_geometry_uploads(vk_handle_cmd_buff);
+    renderer::flush_staging_to_device(vk_handle_cmd_buff);
 
     vkEndCommandBuffer(vk_handle_cmd_buff);
 
@@ -173,7 +204,12 @@ renderer::Renderable load_renderable(const VkCommandPool vk_handle_cmd_pool, con
 
     vk_core::device_wait_idle();
 
-    return renderable;
+    Entity entity {
+        .renderable_id = renderable_sortbin_id_pair.first,
+        .sortbin_id = renderable_sortbin_id_pair.second,
+    };
+
+    return entity;
 }
 
 void blit(const uint32_t frame_resource_idx, const VkCommandBuffer vk_handle_cmd_buff)
