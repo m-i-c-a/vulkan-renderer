@@ -23,3 +23,6 @@ target_include_directories(renderer PUBLIC
 target_link_libraries(renderer PRIVATE 
     $ENV{VULKAN_SDK}/lib/libvulkan.so
     vk_core)
+
+
+set(renderer_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)

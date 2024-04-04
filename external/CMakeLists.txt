@@ -1,0 +1,2 @@
+add_subdirectory(vk_core)
+add_subdirectory(renderer)

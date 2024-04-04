@@ -518,7 +518,7 @@ static uint32_t upload_block(BufferPool_VariableBlock* buffer, const uint32_t bl
     else
     {
         memcpy(static_cast<uint8_t*>(block_ptr), data.data(), block_size - sizeof(uint32_t));
-        memcpy(block_ptr + (block_size - sizeof(uint32_t)), &mat_ID, sizeof(uint32_t));
+        memcpy(static_cast<uint8_t*>(block_ptr) + (block_size - sizeof(uint32_t)), &mat_ID, sizeof(uint32_t));
     }
 
     return block_ID;
@@ -532,7 +532,7 @@ static void queue_uploads_to_staging_buffer(GeometryBuffer* buffer, StagingBuffe
     {
         const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
         staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-        LOG("Geometry queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
+        // LOG("Geometry queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
     }
 }
 
@@ -544,7 +544,7 @@ static bool queue_uploads_to_staging_buffer(BufferPool_VariableBlock* buffer, St
     {
         const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
         staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-        LOG("Uniform queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
+        // LOG("Uniform queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
     }
 
     return !queued_uploads.empty();
@@ -880,7 +880,7 @@ void update_uniform(const BufferType buffer_type, const std::string& uniform_nam
             void* draw_data_ptr = global_draw_data_buffer->get_writable_block(sortbin.draw_data_block_size, renderable.draw_id);
             memcpy(static_cast<uint8_t*>(draw_data_ptr) + it->second.offset, value, it->second.size);
 
-            LOG("Updating uniform member (%u, %s, %u, %u)\n", data_id, uniform_name.c_str(), it->second.offset, it->second.size);
+            // LOG("Updating uniform member (%u, %s, %u, %u)\n", data_id, uniform_name.c_str(), it->second.offset, it->second.size);
 
             break;
         }

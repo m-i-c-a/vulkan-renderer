@@ -1,6 +1,5 @@
 #version 460 core
-//#extension GL_GOOGLE_include_directive : require
-//#include "shared.glsl"
+#extension GL_ARB_draw_instanced : enable
 
 layout(location=0) in vec3 in_pos;
 
@@ -39,9 +38,5 @@ void main()
     MaterialData mat_data = mat_ssbo.data[draw_data.mat_id];
 
     gl_Position = frame_ubo.proj_mat * frame_ubo.view_mat * draw_data.model_matrix * vec4(in_pos, 1.0);
-    // gl_Position = frame_ubo.proj_mat * frame_ubo.view_mat * vec4(in_pos, 1.0);
-    // gl_Position = vec4(in_pos, 1.0);
-
     out_color = mat_data.color;
-    // out_color = vec3(1.0, 1.0, 0.0);
 }

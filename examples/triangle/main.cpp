@@ -3,16 +3,16 @@
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <assert.h>
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include <string.h>
+#include <cstring> // Add this line to include the header file for string manipulation functions
 
-    
-constexpr uint32_t window_width = 400u;
-constexpr uint32_t window_height = 400u;
+constexpr uint32_t window_width = 800u;
+constexpr uint32_t window_height = 800u;
 constexpr uint32_t frame_resource_count = 1u;
 
 struct Entity
@@ -32,16 +32,16 @@ int main()
     GLFWwindow *glfw_window = glfwCreateWindow(static_cast<int>(window_width), static_cast<int>(window_height), "App", nullptr, nullptr);
     assert(glfw_window && "Failed to create window");
 
-    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/data/json/vulkan_info.json");
+    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/triangle/data/json/vulkan_info.json");
 
     const renderer::InitInfo renderer_init_info {
         .window_width = window_width, 
         .window_height = window_height, 
         .frame_resource_count = frame_resource_count, 
-        .app_config_file = "/home/mica/Desktop/clean-start/data/json/app_info.json", 
-        .sortbin_config_file = "/home/mica/Desktop/clean-start/data/json/sortbin_info.json",
-        .sortbin_reflection_config_file = "/home/mica/Desktop/clean-start/data/json/sortbin_reflection_info_simple.json",
-        .shader_root_path = "/home/mica/Desktop/clean-start/data/shaders/spirv/",
+        .app_config_file = "/home/mica/Desktop/clean-start/examples/triangle/data/json/app_info.json", 
+        .sortbin_config_file = "/home/mica/Desktop/clean-start/examples/triangle/data/json/sortbin_info.json",
+        .sortbin_reflection_config_file = "/home/mica/Desktop/clean-start/examples/triangle/data/json/sortbin_reflection_info_simple.json",
+        .shader_root_path = "/home/mica/Desktop/clean-start/examples/triangle/data/shaders/spirv/",
     };
 
     renderer::init(renderer_init_info);
@@ -54,14 +54,14 @@ int main()
     glm::mat4x4 view_mat { 1.0 };
 
     renderer::update_uniform(renderer::BufferType::eFrame, "proj_mat", &(proj_mat[0][0]));
-    renderer::update_uniform(renderer::BufferType::eFrame, "view_mat", &(proj_mat[0][0]));
+    renderer::update_uniform(renderer::BufferType::eFrame, "view_mat", &(view_mat[0][0]));
 
     Entity entity = load_entity(vk_handle_cmd_pool, vk_handle_cmd_buff);
-    // renderer::update_uniform(renderer::BufferType::eDraw, "model_mat", &(proj_mat[0][0]), entity.renderable_id);
 
     renderer::add_renderable_to_sortbin(entity.renderable_id, entity.sortbin_id);
 
     uint32_t frame_idx = 0;
+    float rotation_angle = 0.0f;
 
     while (!glfwWindowShouldClose(glfw_window))
     {
@@ -72,6 +72,10 @@ int main()
         vk_core::acquire_next_swapchain_image(VK_NULL_HANDLE, vk_handle_swapchain_image_acquire_fence);
         vk_core::wait_for_fences(1, &vk_handle_swapchain_image_acquire_fence, VK_TRUE, UINT64_MAX);
         vk_core::reset_fences(1, &vk_handle_swapchain_image_acquire_fence);
+
+        glm::mat4x4 model_mat { 1.0 };
+        model_mat = glm::rotate(model_mat, glm::radians(rotation_angle++), glm::vec3(0.0, 0.0, 1.0));
+        renderer::update_uniform(renderer::BufferType::eDraw, "model_mat", &(model_mat[0][0]), entity.renderable_id);
 
         bool uploads_pending = false;
         renderer::flush_coherent_buffer_uploads(renderer::BufferType::eFrame, frame_resource_idx);
@@ -141,10 +145,15 @@ int main()
 
 Entity load_entity(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff)
 {
+    const float x = 0.707;
+    const float tan_60 = glm::tan(glm::radians(60.0f));
+    const float height = x * tan_60;
+    const float height_down = x / tan_60;
+    const float height_up = height - height_down;
     const float vertex_data[9] = {
-        0.0, -0.5, 0.0,
-        0.5,  0.5, 0.0,
-        -0.5, 0.5, 0.0
+         0.0, -height_up  , 0.0,
+           x,  height_down, 0.0,
+          -x,  height_down, 0.0
     };
 
     const uint32_t index_data[3] = { 0, 1, 2 };

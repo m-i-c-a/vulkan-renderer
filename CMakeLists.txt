@@ -6,19 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED On)
 
 message(STATUS "Using " $ENV{VULKAN_SDK})
 
-add_subdirectory(vk_core)
-add_subdirectory(renderer)
-
 find_package(glfw3 REQUIRED FATAL_ERROR)
 
-add_executable(app main.cpp)
-
-target_include_directories(app PRIVATE 
-    glfw_INCLUDE_DIRS)
-
-target_link_libraries(app PRIVATE 
-    glfw
-    vk_core
-    renderer)
-
-
+add_subdirectory(external)
+add_subdirectory(examples)
