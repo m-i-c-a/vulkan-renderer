@@ -1,0 +1,30 @@
+{
+    "sortbins" : [
+        {
+            "name" : "standard",
+            "pipeline-state" : {
+                "shader-state" : [
+                    "std.vert",
+                    "std.frag"
+                ], 
+                "input-assembly-state" : {
+                    "topology" : "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
+                },
+                "rasterization-state" : {
+                    "polygon-mode" : "VK_POLYGON_MODE_FILL",
+                    "cull-mode" : "VK_CULL_MODE_NONE",
+                    "front-face" : "VK_FRONT_FACE_CLOCKWISE"
+                },
+                "depth-stencil-state" : {
+                    "depth-test-enable" : false,
+                    "depth-write-enable" : false,
+                    "depth-compare-op" : "VK_COMPARE_OP_LESS",
+                    "stencil-test-enable" : false
+                },
+                "color-blend-state" : {
+                    "blend-enabled" : 0
+                }
+            }
+        }
+    ]
+}

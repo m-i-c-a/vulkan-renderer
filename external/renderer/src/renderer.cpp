@@ -591,7 +591,15 @@ namespace renderer
 // -- Add supported_sortbin_set_id to renderable
 
 
+struct GlobalState
+{
+    GeometryBuffer*           geometry_buffer = nullptr;
+    UniformBuffer*            frame_uniform_buffer = nullptr;
+    BufferPool_VariableBlock* material_data_buffer = nullptr;
+    BufferPool_VariableBlock* draw_data_buffer = nullptr;
+    StagingBuffer*            staging_buffer = nullptr;
 
+} global_state;
 
 static std::vector<Renderable> global_renderable_list {};
 static std::vector<Mesh> global_mesh_list; 
@@ -599,14 +607,6 @@ static std::vector<Mesh> global_mesh_list;
 static std::vector<RenderPass::Attachment> global_render_attachment_list;
 static std::vector<RenderPass> global_render_pass_list;
 static std::vector<SortBin> global_sortbin_list;
-
-
-static GeometryBuffer* global_geometry_buffer;
-static StagingBuffer* global_staging_buffer;
-
-static UniformBuffer* global_frame_uniform_buffer;;
-static BufferPool_VariableBlock* global_material_data_buffer;
-static BufferPool_VariableBlock* global_draw_data_buffer;
 
 static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
 static VkDescriptorPool vk_handle_global_desc_pool;
@@ -626,20 +626,20 @@ void init(const InitInfo& init_info)
     };
 
     const std::unordered_map<std::string, DescriptorVariable> frame_uniform_refl_set {{
-        { "proj_mat", { "proj_mat", 0, 64 } },
-        { "view_mat", { "view_mat", 64, 128 } },
+        { "proj_mat", { "proj_mat", 0,  64 } },
+        { "view_mat", { "view_mat", 64, 64 } },
     }};
 
-    global_geometry_buffer = new GeometryBuffer(geom_buffer_create_info);
-    global_staging_buffer = new StagingBuffer(1024 * 1024);
-    global_frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
-    global_material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
-    global_draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
+    global_state.geometry_buffer = new GeometryBuffer(geom_buffer_create_info);
+    global_state.staging_buffer = new StagingBuffer(1024 * 1024);
+    global_state.frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
+    global_state.material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
+    global_state.draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
 
     vk_handle_global_desc_set_layout = create_desc_set_layout();
     vk_handle_global_desc_pool = create_desc_pool(init_info.frame_resource_count);
     vk_handle_global_desc_set_list = create_desc_sets(init_info.frame_resource_count, vk_handle_global_desc_set_layout, vk_handle_global_desc_pool);
-    update_desc_sets(init_info.frame_resource_count, global_frame_uniform_buffer, global_material_data_buffer, global_draw_data_buffer, vk_handle_global_desc_set_list);
+    update_desc_sets(init_info.frame_resource_count, global_state.frame_uniform_buffer, global_state.material_data_buffer, global_state.draw_data_buffer, vk_handle_global_desc_set_list);
 
     global_render_attachment_list = create_render_attachments(init_info);
     global_render_pass_list = create_render_passes(init_info);
@@ -648,7 +648,14 @@ void init(const InitInfo& init_info)
 
 void terminate()
 {
-    delete global_geometry_buffer;
+    delete global_state.geometry_buffer;
+    delete global_state.frame_uniform_buffer;
+    delete global_state.material_data_buffer;
+    delete global_state.draw_data_buffer;
+    delete global_state.staging_buffer;
+
+    vk_core::destroy_desc_pool(vk_handle_global_desc_pool);
+    vk_core::destroy_desc_set_layout(vk_handle_global_desc_set_layout);
 
     for (const SortBin& sortbin : global_sortbin_list)
     {
@@ -691,14 +698,14 @@ void record_render_pass(const uint32_t renderpass_id, const VkCommandBuffer vk_h
         .global_sortbin_list = global_sortbin_list,
         .render_area = render_area,
         .vk_handle_index_buffer_list = { 
-            global_geometry_buffer->get_vk_handle_buffer(),
-            global_geometry_buffer->get_vk_handle_buffer(),
-            global_geometry_buffer->get_vk_handle_buffer()
+            global_state.geometry_buffer->get_vk_handle_buffer(),
+            global_state.geometry_buffer->get_vk_handle_buffer(),
+            global_state.geometry_buffer->get_vk_handle_buffer()
         },
         .vk_handle_global_desc_set = vk_handle_global_desc_set_list[frame_resource_idx],
     };
 
-    const VkBuffer vk_handle_geometry_buffer = global_geometry_buffer->get_vk_handle_buffer();
+    const VkBuffer vk_handle_geometry_buffer = global_state.geometry_buffer->get_vk_handle_buffer();
     const VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(vk_handle_cmd_buff, 0, 1, &vk_handle_geometry_buffer, &offset);
 
@@ -759,7 +766,7 @@ void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sort
 
 std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx)
 {
-    ASSERT(global_geometry_buffer != nullptr, "Global geometry buffer not initialized!\n");
+    ASSERT(global_state.geometry_buffer != nullptr, "Global geometry buffer not initialized!\n");
     ASSERT(global_sortbin_list.size() > init_info.default_sortbin_id, "Default sortbin ID out of range!\n");
 
     const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_id];
@@ -767,19 +774,19 @@ std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_i
     ASSERT(sortbin.material_data_block_size == init_info.material_data.size(), "Material data size mismatch!\n");
     ASSERT(sortbin.draw_data_block_size == init_info.draw_data.size() + sizeof(uint32_t), "Draw data size mismatch!\n");
 
-    const uint32_t first_index = static_cast<uint32_t>(global_geometry_buffer->queue_upload(
+    const uint32_t first_index = static_cast<uint32_t>(global_state.geometry_buffer->queue_upload(
         init_info.index_stride,
         init_info.index_count,
         std::vector<uint8_t>(init_info.index_data, init_info.index_data + init_info.index_count * init_info.index_stride)));
 
-    const int32_t vertex_offset = global_geometry_buffer->queue_upload(
+    const int32_t vertex_offset = global_state.geometry_buffer->queue_upload(
         init_info.vertex_stride,
         init_info.vertex_count,
         std::vector<uint8_t>(init_info.vertex_data, init_info.vertex_data + init_info.vertex_count * init_info.vertex_stride));
 
     const uint32_t mesh_ID = static_cast<uint32_t>(global_mesh_list.size());
-    const uint32_t mat_ID = upload_block(global_material_data_buffer, sortbin.material_data_block_size, init_info.material_data);
-    const uint32_t draw_ID = upload_block(global_draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data, mat_ID);
+    const uint32_t mat_ID = upload_block(global_state.material_data_buffer, sortbin.material_data_block_size, init_info.material_data);
+    const uint32_t draw_ID = upload_block(global_state.draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data, mat_ID);
     const uint32_t renderable_ID = static_cast<uint32_t>(global_renderable_list.size());
 
     const Mesh mesh {
@@ -802,9 +809,9 @@ std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_i
     global_mesh_list.push_back(mesh);
     global_renderable_list.push_back(renderable);
 
-    queue_uploads_to_staging_buffer(global_geometry_buffer, global_staging_buffer);
-    queue_uploads_to_staging_buffer(global_material_data_buffer, global_staging_buffer, frame_resource_idx);
-    queue_uploads_to_staging_buffer(global_draw_data_buffer, global_staging_buffer, frame_resource_idx);
+    queue_uploads_to_staging_buffer(global_state.geometry_buffer, global_state.staging_buffer);
+    queue_uploads_to_staging_buffer(global_state.material_data_buffer, global_state.staging_buffer, frame_resource_idx);
+    queue_uploads_to_staging_buffer(global_state.draw_data_buffer, global_state.staging_buffer, frame_resource_idx);
 
     return {renderable_ID, renderable.default_sortbin_id};
 }
@@ -815,7 +822,7 @@ void flush_coherent_buffer_uploads(const BufferType buffer_type, const uint32_t 
     {
         case BufferType::eFrame:
         {
-            global_frame_uniform_buffer->flush_updates(frame_resource_idx);
+            global_state.frame_uniform_buffer->flush_updates(frame_resource_idx);
             break;
         }
         default:
@@ -833,12 +840,12 @@ bool flush_buffer_uploads_to_staging(const BufferType buffer_type, const uint32_
     {
         case BufferType::eMaterial:
         {
-            has_uploads = queue_uploads_to_staging_buffer(global_material_data_buffer, global_staging_buffer, frame_resource_idx);
+            has_uploads = queue_uploads_to_staging_buffer(global_state.material_data_buffer, global_state.staging_buffer, frame_resource_idx);
             break;
         }
         case BufferType::eDraw:
         {
-            has_uploads = queue_uploads_to_staging_buffer(global_draw_data_buffer, global_staging_buffer, frame_resource_idx);
+            has_uploads = queue_uploads_to_staging_buffer(global_state.draw_data_buffer, global_state.staging_buffer, frame_resource_idx);
             break;
         }
         case BufferType::eSortbin:
@@ -854,7 +861,7 @@ bool flush_buffer_uploads_to_staging(const BufferType buffer_type, const uint32_
 
 void flush_staging_to_device(const VkCommandBuffer vk_handle_cmd_buff)
 {
-    global_staging_buffer->flush(vk_handle_cmd_buff);
+    global_state.staging_buffer->flush(vk_handle_cmd_buff);
 }
 
 void update_uniform(const BufferType buffer_type, const std::string& uniform_name, const void* const value, const uint32_t data_id)
@@ -863,7 +870,7 @@ void update_uniform(const BufferType buffer_type, const std::string& uniform_nam
     {
         case BufferType::eFrame:
         {
-            global_frame_uniform_buffer->update_member(uniform_name, value);
+            global_state.frame_uniform_buffer->update_member(uniform_name, value);
             break;
         }
         case BufferType::eDraw:
@@ -877,7 +884,7 @@ void update_uniform(const BufferType buffer_type, const std::string& uniform_nam
             const auto it = sortbin.descriptor_variable_draw_umap.find(uniform_name);
             ASSERT(it != sortbin.descriptor_variable_draw_umap.end(), "Member name `%s` not found in sortbin descriptor variable list!\n", uniform_name.c_str());
 
-            void* draw_data_ptr = global_draw_data_buffer->get_writable_block(sortbin.draw_data_block_size, renderable.draw_id);
+            void* draw_data_ptr = global_state.draw_data_buffer->get_writable_block(sortbin.draw_data_block_size, renderable.draw_id);
             memcpy(static_cast<uint8_t*>(draw_data_ptr) + it->second.offset, value, it->second.size);
 
             // LOG("Updating uniform member (%u, %s, %u, %u)\n", data_id, uniform_name.c_str(), it->second.offset, it->second.size);

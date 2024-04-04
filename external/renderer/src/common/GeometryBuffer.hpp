@@ -21,6 +21,7 @@ private:
 
 public:
     GeometryBuffer(const VkBufferCreateInfo& create_info);
+    ~GeometryBuffer();
 
     int32_t queue_upload(const uint32_t stride, const uint32_t count, std::vector<uint8_t>&& data);
 
@@ -35,6 +36,12 @@ GeometryBuffer::GeometryBuffer(const VkBufferCreateInfo &create_info)
     m_vk_handle_buffer = vk_core::create_buffer(create_info);
     m_vk_handle_buffer_memory = vk_core::allocate_buffer_memory(m_vk_handle_buffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_buffer_size);
     vk_core::bind_buffer_memory(m_vk_handle_buffer, m_vk_handle_buffer_memory);
+}
+
+GeometryBuffer::~GeometryBuffer()
+{
+    vk_core::destroy_buffer(m_vk_handle_buffer);
+    vk_core::free_memory(m_vk_handle_buffer_memory);
 }
 
 int32_t GeometryBuffer::queue_upload(const uint32_t stride, const uint32_t count, std::vector<uint8_t>&& data)

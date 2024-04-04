@@ -49,6 +49,12 @@ StagingBuffer::StagingBuffer(const VkDeviceSize size)
     vk_core::map_memory(m_vk_handle_memory, 0, m_buffer_size, 0x0, (void**)&m_mapped_ptr);
 }
 
+StagingBuffer::~StagingBuffer()
+{
+    vk_core::unmap_memory(m_vk_handle_memory);
+    vk_core::destroy_buffer(m_vk_handle_buffer);
+    vk_core::free_memory(m_vk_handle_memory);
+}
 
 void StagingBuffer::queue_upload(const VkBuffer vk_handle_dst_buffer, const VkDeviceSize dst_offset, const VkDeviceSize upload_size, const void* const data)
 {
