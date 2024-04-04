@@ -106,6 +106,7 @@ VkFormat string_to_enum_VkFormat(const std::string& str)
         { "VK_FORMAT_D32_SFLOAT"      , VK_FORMAT_D32_SFLOAT     },
         { "VK_FORMAT_R32G32B32_SFLOAT", VK_FORMAT_R32G32B32_SFLOAT },
         { "VK_FORMAT_R32G32_SFLOAT"   , VK_FORMAT_R32G32_SFLOAT },
+        { "VK_FORMAT_R8G8B8_SNORM"    , VK_FORMAT_R8G8B8_SNORM },
     };
 
     return mapping.at(str);
