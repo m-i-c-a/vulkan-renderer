@@ -1,6 +1,8 @@
 #include "vk_core.hpp"
 #include "renderer.hpp"
 
+#include "Camera.hpp"
+
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -10,6 +12,7 @@
 #include <unordered_map>
 #include <string>
 #include <cstring> // Add this line to include the header file for string manipulation functions
+#include <iostream>
 
 constexpr uint32_t window_width = 800u;
 constexpr uint32_t window_height = 800u;
@@ -24,6 +27,44 @@ struct Entity
 Entity load_entity(const VkCommandPool vk_handle_cmd_pool, const VkCommandBuffer vk_handle_cmd_buff);
 void blit(const uint32_t frame_resource_idx, const VkCommandBuffer vk_handle_cmd_buff);
 
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    const auto update_xyz_dir = [&](const glm::vec3& dir)
+    {
+        if (action == GLFW_PRESS)
+        {
+            Camera::update_xyz_dir(dir);
+        }
+        else if (action == GLFW_RELEASE)
+        {
+            Camera::update_xyz_dir(-dir);
+        }
+    };
+
+    switch (key)
+    {
+        case GLFW_KEY_W:
+            update_xyz_dir(glm::vec3(0.0f, 0.0f, 1.0f));
+            break;
+        case GLFW_KEY_S:
+            update_xyz_dir(glm::vec3(0.0f, 0.0f, -1.0f));
+            break;
+        case GLFW_KEY_D:
+            update_xyz_dir(glm::vec3(-1.0f, 0.0f, 0.0f));
+            break;
+        case GLFW_KEY_A:
+            update_xyz_dir(glm::vec3(1.0f, 0.0f, 0.0f));
+            break;
+        case GLFW_KEY_E:
+            update_xyz_dir(glm::vec3(0.0f, 1.0f, 0.0f));
+            break;
+        case GLFW_KEY_Q:
+            update_xyz_dir(glm::vec3(0.0f, -1.0f, 0.0f));
+            break;
+    }
+
+}
+
 int main()
 {
     glfwInit();
@@ -31,6 +72,7 @@ int main()
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     GLFWwindow *glfw_window = glfwCreateWindow(static_cast<int>(window_width), static_cast<int>(window_height), "App", nullptr, nullptr);
     assert(glfw_window && "Failed to create window");
+    glfwSetKeyCallback(glfw_window, key_callback);
 
     vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/camera/data/json/vulkan_info.json");
 
@@ -50,11 +92,8 @@ int main()
     const VkCommandBuffer vk_handle_cmd_buff = vk_core::allocate_command_buffer(vk_handle_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     const VkFence vk_handle_swapchain_image_acquire_fence = vk_core::create_fence(0x0);
 
-    glm::mat4x4 proj_mat { 1.0 };
-    glm::mat4x4 view_mat { 1.0 };
-
-    renderer::update_uniform(renderer::BufferType::eFrame, "proj_mat", &(proj_mat[0][0]));
-    renderer::update_uniform(renderer::BufferType::eFrame, "view_mat", &(view_mat[0][0]));
+    Camera::proj_mat = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+    Camera::view_mat[3] = glm::vec4(0.0f, 0.0f, -2.0f, 1.0f); 
 
     Entity entity = load_entity(vk_handle_cmd_pool, vk_handle_cmd_buff);
 
@@ -72,6 +111,18 @@ int main()
         vk_core::acquire_next_swapchain_image(VK_NULL_HANDLE, vk_handle_swapchain_image_acquire_fence);
         vk_core::wait_for_fences(1, &vk_handle_swapchain_image_acquire_fence, VK_TRUE, UINT64_MAX);
         vk_core::reset_fences(1, &vk_handle_swapchain_image_acquire_fence);
+
+        if (Camera::proj_dirty)
+        {
+            renderer::update_uniform(renderer::BufferType::eFrame, "proj_mat", &(Camera::proj_mat[0][0]), frame_resource_idx);
+            Camera::proj_dirty = false;
+        }
+
+        if (Camera::view_dirty)
+        {
+            Camera::update_xyz();
+            renderer::update_uniform(renderer::BufferType::eFrame, "view_mat", &(Camera::view_mat[0][0]), frame_resource_idx);
+        }
 
         glm::mat4x4 model_mat { 1.0 };
         model_mat = glm::rotate(model_mat, glm::radians(rotation_angle++), glm::vec3(0.0, 0.0, 1.0));

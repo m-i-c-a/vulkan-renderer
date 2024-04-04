@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/home/mica/Desktop/clean-start/bin/triangle",
+            "program": "/home/mica/Desktop/clean-start/bin/camera",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
