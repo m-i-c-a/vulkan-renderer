@@ -1,0 +1,53 @@
+{
+    "render-attachments" : {
+        "shared-state" : {
+            "num-samples" : 1,
+            "tiling" : "VK_IMAGE_TILING_OPTIMAL",
+            "sharing-mode" : "VK_SHARING_MODE_EXCLUSIVE",
+            "initial-layout" : "VK_IMAGE_LAYOUT_UNDEFINED"
+        },
+        "render-attachment-list" : [
+            {
+                "format" : "VK_FORMAT_R8G8B8A8_UNORM",
+                "usage" : [ "VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT", "VK_IMAGE_USAGE_TRANSFER_SRC_BIT" ]
+            },
+            {
+                "format" : "VK_FORMAT_D32_SFLOAT",
+                "usage" : [ "VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT" ]
+            }
+        ]
+    },
+    "render-passes" : [
+        {
+            "id" : 0,
+            "name" : "default",
+            "color-attachments" : [
+                {
+                    "id" : 0,
+                    "image-layout" : "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL",
+                    "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
+                    "store-op" : "VK_ATTACHMENT_STORE_OP_STORE",
+                    "clear-value" : {
+                        "color" : [1, 0, 0, 1]
+                    }
+                }
+            ],
+            "depth-attachment" : {
+                "id" : 1,
+                "image-layout" : "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL",
+                "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
+                "store-op" : "VK_ATTACHMENT_STORE_OP_DONT_CARE",
+                "clear-value" : {
+                    "depth" : 0
+                }
+            }
+        }
+    ],
+    "sortbins" : [
+        {
+            "id" : 0,
+            "name" : "standard",
+            "renderpass-id" : 0
+        }
+    ]
+}

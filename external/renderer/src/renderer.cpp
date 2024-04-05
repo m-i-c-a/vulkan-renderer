@@ -524,7 +524,26 @@ static uint32_t upload_block(BufferPool_VariableBlock* buffer, const uint32_t bl
     return block_ID;
 }
 
-static void queue_uploads_to_staging_buffer(GeometryBuffer* buffer, StagingBuffer* staging_buffer)
+static uint32_t upload_block(BufferPool_VariableBlock* buffer, const uint32_t block_size, const uint32_t data_size, const uint8_t* data_ptr, const uint32_t mat_ID = UINT32_MAX)
+{
+    uint32_t block_ID = buffer->acquire_block(block_size); 
+    void* block_ptr = buffer->get_writable_block(block_size, block_ID);
+
+    if ( mat_ID == UINT32_MAX )
+    {
+        memcpy(block_ptr, data_ptr, block_size);
+    }
+    else
+    {
+        memcpy(static_cast<uint8_t*>(block_ptr), data_ptr, block_size - sizeof(uint32_t));
+        memcpy(static_cast<uint8_t*>(block_ptr) + (block_size - sizeof(uint32_t)), &mat_ID, sizeof(uint32_t));
+    }
+
+    return block_ID;
+}
+
+
+static bool queue_uploads_to_staging_buffer(GeometryBuffer* buffer, StagingBuffer* staging_buffer)
 {
     const std::vector<UploadInfo> queued_uploads = buffer->get_queued_uploads();
 
@@ -534,6 +553,8 @@ static void queue_uploads_to_staging_buffer(GeometryBuffer* buffer, StagingBuffe
         staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
         // LOG("Geometry queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
     }
+
+    return !queued_uploads.empty();
 }
 
 static bool queue_uploads_to_staging_buffer(BufferPool_VariableBlock* buffer, StagingBuffer* staging_buffer, const uint32_t frame_resource_idx)
@@ -544,7 +565,7 @@ static bool queue_uploads_to_staging_buffer(BufferPool_VariableBlock* buffer, St
     {
         const void* const data_ptr = upload_info.data_pointer ? upload_info.data_pointer : (void*)upload_info.data_vector.data();
         staging_buffer->queue_upload(buffer->get_vk_handle_buffer(), upload_info.dst_offset, upload_info.size, data_ptr);
-        // LOG("Uniform queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
+        LOG("Uniform queued upload to staging buffer (%lu, %lu)\n", upload_info.dst_offset, upload_info.size);
     }
 
     return !queued_uploads.empty();
@@ -590,6 +611,12 @@ namespace renderer
 // -- Create draw_id
 // -- Add supported_sortbin_set_id to renderable
 
+struct Material
+{
+    uint32_t ID;
+    uint32_t supported_sortbin_set_ID;
+};
+
 
 struct GlobalState
 {
@@ -598,6 +625,8 @@ struct GlobalState
     BufferPool_VariableBlock* material_data_buffer = nullptr;
     BufferPool_VariableBlock* draw_data_buffer = nullptr;
     StagingBuffer*            staging_buffer = nullptr;
+
+    std::unordered_map<std::string, Material> material_umap;
 
 } global_state;
 
@@ -611,6 +640,12 @@ static std::vector<SortBin> global_sortbin_list;
 static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
 static VkDescriptorPool vk_handle_global_desc_pool;
 static std::vector<VkDescriptorSet> vk_handle_global_desc_set_list;
+
+
+
+
+
+
 
 void init(const InitInfo& init_info)
 {
@@ -764,15 +799,9 @@ void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sort
 }
 
 
-std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx)
+uint32_t create_mesh(const MeshInitInfo& init_info)
 {
     ASSERT(global_state.geometry_buffer != nullptr, "Global geometry buffer not initialized!\n");
-    ASSERT(global_sortbin_list.size() > init_info.default_sortbin_id, "Default sortbin ID out of range!\n");
-
-    const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_id];
-
-    ASSERT(sortbin.material_data_block_size == init_info.material_data.size(), "Material data size mismatch!\n");
-    ASSERT(sortbin.draw_data_block_size == init_info.draw_data.size() + sizeof(uint32_t), "Draw data size mismatch!\n");
 
     const uint32_t first_index = static_cast<uint32_t>(global_state.geometry_buffer->queue_upload(
         init_info.index_stride,
@@ -785,9 +814,6 @@ std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_i
         std::vector<uint8_t>(init_info.vertex_data, init_info.vertex_data + init_info.vertex_count * init_info.vertex_stride));
 
     const uint32_t mesh_ID = static_cast<uint32_t>(global_mesh_list.size());
-    const uint32_t mat_ID = upload_block(global_state.material_data_buffer, sortbin.material_data_block_size, init_info.material_data);
-    const uint32_t draw_ID = upload_block(global_state.draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data, mat_ID);
-    const uint32_t renderable_ID = static_cast<uint32_t>(global_renderable_list.size());
 
     const Mesh mesh {
         .index_count = init_info.index_count,
@@ -798,23 +824,71 @@ std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_i
         .index_stride = init_info.index_stride,
     };
 
+    global_mesh_list.push_back(mesh);
+
+    queue_uploads_to_staging_buffer(global_state.geometry_buffer, global_state.staging_buffer);
+
+    return mesh_ID;
+}
+
+uint32_t create_material(const MaterialInitInfo& init_info, const uint32_t frame_resource_idx)
+{
+    const auto iter = global_state.material_umap.find(init_info.name);
+
+    if (iter != global_state.material_umap.end())
+    {
+        LOG("Attempting to create already existing material %s!\n", init_info.name.c_str());
+        return iter->second.ID;
+    }
+
+    ASSERT(global_sortbin_list.size() > init_info.default_sortbin_ID, "Default sortbin ID out of range!\n");
+
+    const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_ID];
+
+    ASSERT(sortbin.material_data_block_size == init_info.material_data_size, "Material data size mismatch!\n");
+
+    const uint32_t mat_ID = upload_block(global_state.material_data_buffer, sortbin.material_data_block_size, init_info.material_data_size, init_info.material_data_ptr);
+
+    queue_uploads_to_staging_buffer(global_state.material_data_buffer, global_state.staging_buffer, frame_resource_idx);
+
+    const Material mat {
+        .ID = mat_ID,
+        .supported_sortbin_set_ID = 0
+    };
+
+    global_state.material_umap.emplace_hint(iter, init_info.name, mat);
+
+    return mat_ID;
+}
+
+std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx)
+{
+    ASSERT(global_sortbin_list.size() > init_info.default_sortbin_id, "Default sortbin ID out of range!\n");
+
+    const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_id];
+
+    ASSERT(sortbin.draw_data_block_size == init_info.draw_data_size + sizeof(uint32_t), "Draw data size mismatch!\n");
+
+    const uint32_t draw_ID = upload_block(global_state.draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data_size, init_info.draw_data_ptr, init_info.material_ID);
+    const uint32_t renderable_ID = static_cast<uint32_t>(global_renderable_list.size());
+
     const Renderable renderable {
-        .mesh_id = mesh_ID,
-        .material_id = mat_ID,
+        .mesh_id = init_info.mesh_ID,
+        .material_id = init_info.material_ID,
         .draw_id = draw_ID,
         .default_sortbin_id = init_info.default_sortbin_id,
         .supported_sortbin_set_id = 0,
     };
 
-    global_mesh_list.push_back(mesh);
     global_renderable_list.push_back(renderable);
 
-    queue_uploads_to_staging_buffer(global_state.geometry_buffer, global_state.staging_buffer);
-    queue_uploads_to_staging_buffer(global_state.material_data_buffer, global_state.staging_buffer, frame_resource_idx);
     queue_uploads_to_staging_buffer(global_state.draw_data_buffer, global_state.staging_buffer, frame_resource_idx);
 
     return {renderable_ID, renderable.default_sortbin_id};
 }
+
+
+
 
 void flush_coherent_buffer_uploads(const BufferType buffer_type, const uint32_t frame_resource_idx)
 {
@@ -838,6 +912,11 @@ bool flush_buffer_uploads_to_staging(const BufferType buffer_type, const uint32_
     bool has_uploads = false;
     switch (buffer_type)
     {
+        case BufferType::eGeometry:
+        {
+            has_uploads = queue_uploads_to_staging_buffer(global_state.geometry_buffer, global_state.staging_buffer);
+            break;
+        }
         case BufferType::eMaterial:
         {
             has_uploads = queue_uploads_to_staging_buffer(global_state.material_data_buffer, global_state.staging_buffer, frame_resource_idx);

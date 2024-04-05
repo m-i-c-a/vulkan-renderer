@@ -36,17 +36,31 @@ namespace renderer
         const char* const shader_root_path;
     };
 
-    struct RenderableInitInfo
+    struct MeshInitInfo
     {
-        uint16_t             default_sortbin_id;
         uint32_t             vertex_stride;
         uint32_t             vertex_count;
         const uint8_t*       vertex_data;
         uint32_t             index_count;
         const uint8_t*       index_data;
         uint32_t             index_stride;
-        std::vector<uint8_t> material_data;
-        std::vector<uint8_t> draw_data;
+    };
+
+    struct MaterialInitInfo
+    {
+        std::string    name;
+        const uint8_t* material_data_ptr;
+        uint32_t       material_data_size;
+        uint16_t       default_sortbin_ID;
+    };
+
+    struct RenderableInitInfo
+    {
+        uint32_t       mesh_ID;
+        uint32_t       material_ID;
+        const uint8_t* draw_data_ptr;
+        uint32_t       draw_data_size;
+        uint16_t       default_sortbin_id;
     };
 
     struct Renderable
@@ -60,12 +74,17 @@ namespace renderer
 
     enum class BufferType
     {
+        eGeometry,
         eFrame,
         eSortbin,
         eMaterial,
         eDraw,
     };
 
+    uint32_t get_material_ID(const std::string& material_name);
+
+    uint32_t create_mesh(const MeshInitInfo& init_info);
+    uint32_t create_material(const MaterialInitInfo& init_info, const uint32_t frame_resource_idx);
     std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx);
 
     void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id);
