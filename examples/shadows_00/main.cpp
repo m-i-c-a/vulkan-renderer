@@ -165,7 +165,8 @@ int main()
         const uint32_t green_material_ID = renderer::create_material(material_init_info, 0);
 
         glm::mat4x4 model_mat { 1.0 };
-        model_mat = glm::translate(model_mat, glm::vec3(-0.5f, 0.0f, 0.0f));
+        model_mat = glm::translate(model_mat, glm::vec3(0.0f, 0.0f, 0.0f));
+        model_mat = glm::scale(model_mat, glm::vec3(10.0f, 0.1f, 10.0f)); // ground = 0.05f
         std::array<uint8_t, 64> draw_data { 0 };
         memcpy(draw_data.data(), &(model_mat[0][0]), 64);
 
@@ -183,7 +184,8 @@ int main()
         entity_list[0].sortbin_id = p.second;
 
         model_mat = glm::mat4x4 { 1.0 };
-        model_mat = glm::translate(model_mat, glm::vec3(0.5f, 0.0f, 0.0f));
+        model_mat = glm::translate(model_mat, glm::vec3(0.0f, -1.55f, 0.0f));
+        model_mat = glm::scale(model_mat, glm::vec3(1.0f, 3.0f, 1.0f));
         memcpy(draw_data.data(), &(model_mat[0][0]), 64);
         renderable_init_info.material_ID = blue_matieral_ID;
         renderable_init_info.draw_data_ptr = draw_data.data();
@@ -195,7 +197,7 @@ int main()
 
     {
         Camera::proj_mat = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-        Camera::view_mat[3] = glm::vec4(0.0f, 0.0f, -2.0f, 1.0f); 
+        Camera::view_mat[3] = glm::vec4(0.0f, 4.5f, -14.0f, 1.0f); 
 
         renderer::add_renderable_to_sortbin(entity_list[0].renderable_id, entity_list[0].sortbin_id);
         renderer::add_renderable_to_sortbin(entity_list[1].renderable_id, entity_list[1].sortbin_id);
