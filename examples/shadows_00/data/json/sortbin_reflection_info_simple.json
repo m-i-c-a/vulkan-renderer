@@ -54,6 +54,11 @@
                                     "name" : "color",
                                     "offset" : 0,
                                     "size" : 12
+                                },
+                                {
+                                    "name" : "__padding",
+                                    "offset" : 12,
+                                    "size" : 4
                                 }
                             ]
                         },

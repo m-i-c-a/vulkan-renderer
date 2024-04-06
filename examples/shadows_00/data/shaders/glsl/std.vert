@@ -8,6 +8,7 @@ layout(location=0) out vec3 out_color;
 struct MaterialData
 {
     vec3 color;
+    uint __padding;
 };
 
 struct DrawData

@@ -363,6 +363,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
             .descriptor_variable_material_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).variables,
             .descriptor_variable_draw_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).variables,
             .material_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).size,
+            .material_data_block_end_padding_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).end_padding_size,
             .draw_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).size,
             .draw_data_block_end_padding_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).end_padding_size,
         };
@@ -846,7 +847,7 @@ uint32_t create_material(const MaterialInitInfo& init_info, const uint32_t frame
 
     const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_ID];
 
-    ASSERT(sortbin.material_data_block_size == init_info.material_data_size, "Material data size mismatch!\n");
+    ASSERT(sortbin.material_data_block_size - sortbin.material_data_block_end_padding_size == init_info.material_data_size, "Material data size mismatch!\n");
 
     const uint32_t mat_ID = upload_block(global_state.material_data_buffer, sortbin.material_data_block_size, init_info.material_data_size, init_info.material_data_ptr);
 

@@ -96,36 +96,73 @@ int main()
     std::array<Entity, 2> entity_list;
 
     {
-        const float x = 0.707;
-        const float tan_60 = glm::tan(glm::radians(60.0f));
-        const float height = x * tan_60;
-        const float height_down = x / tan_60;
-        const float height_up = height - height_down;
-        const std::array<float, 9> vertex_data {
-            0.0, -height_up  , 0.0,
-            x,  height_down, 0.0,
-            -x,  height_down, 0.0
+        struct Vertex
+        {
+            float pos[3];
         };
 
-        std::array<uint32_t, 3> index_data { 0, 1, 2 };
+        constexpr size_t num_vertices = 8;
+        constexpr size_t num_indices = 36;
+
+        constexpr std::array<Vertex, num_vertices> vertex_data = {{
+            // Front face
+            -0.5f, -0.5f, 0.5f, // 0: bottom-left
+            0.5f, -0.5f, 0.5f, // 1: bottom-right
+            0.5f,  0.5f, 0.5f, // 2: top-right
+            -0.5f,  0.5f, 0.5f, // 3: top-left
+            // Back face
+            -0.5f, -0.5f, -0.5f, // 4: bottom-left
+            0.5f, -0.5f, -0.5f, // 5: bottom-right
+            0.5f,  0.5f, -0.5f, // 6: top-right
+            -0.5f,  0.5f, -0.5f  // 7: top-left
+        }};
+
+        constexpr std::array<unsigned int, num_indices> index_data = {{
+            // Front face
+            0, 1, 2,
+            2, 3, 0,
+            // Back face
+            4, 5, 6,
+            6, 7, 4,
+            // Top face
+            3, 2, 6,
+            6, 7, 3,
+            // Bottom face
+            0, 1, 5,
+            5, 4, 0,
+            // Right face
+            1, 2, 6,
+            6, 5, 1,
+            // Left face
+            0, 3, 7,
+            7, 4, 0
+        }};
 
         const renderer::MeshInitInfo mesh_init_info {
             .vertex_stride = 12,
-            .vertex_count = 3,
+            .vertex_count = static_cast<uint32_t>(vertex_data.size()),
             .vertex_data = reinterpret_cast<const uint8_t*>(vertex_data.data()),
             .index_count = static_cast<uint32_t>(index_data.size()),
             .index_data = reinterpret_cast<const uint8_t*>(index_data.data()),
             .index_stride = 4,
         };
 
-        std::array<float, 3> material_data { 0.0f, 0.0f, 1.0f }; 
+        constexpr std::array<float, 3> blue_material_data { 0.0f, 0.0f, 1.0f }; 
+        constexpr std::array<float, 3> green_material_data { 0.0f, 1.0f, 0.0f }; 
 
-        const renderer::MaterialInitInfo material_init_info {
-            .name = "green",
-            .material_data_ptr = reinterpret_cast<const uint8_t*>(material_data.data()),
-            .material_data_size = static_cast<uint32_t>(material_data.size() * sizeof(float)),
+        renderer::MaterialInitInfo material_init_info {
+            .name = "blue",
+            .material_data_ptr = reinterpret_cast<const uint8_t*>(blue_material_data.data()),
+            .material_data_size = static_cast<uint32_t>(blue_material_data.size() * sizeof(float)),
             .default_sortbin_ID = 0
         };
+
+        const uint32_t blue_matieral_ID = renderer::create_material(material_init_info, 0);
+
+        material_init_info.name = "green";
+        material_init_info.material_data_ptr =  reinterpret_cast<const uint8_t*>(green_material_data.data());
+
+        const uint32_t green_material_ID = renderer::create_material(material_init_info, 0);
 
         glm::mat4x4 model_mat { 1.0 };
         model_mat = glm::translate(model_mat, glm::vec3(-0.5f, 0.0f, 0.0f));
@@ -134,7 +171,7 @@ int main()
 
         renderer::RenderableInitInfo renderable_init_info {
             .mesh_ID = renderer::create_mesh(mesh_init_info),
-            .material_ID = renderer::create_material(material_init_info, 0),
+            .material_ID = green_material_ID,
             .draw_data_ptr = draw_data.data(),
             .draw_data_size = static_cast<uint32_t>(draw_data.size()),
             .default_sortbin_id = 0,
@@ -148,6 +185,7 @@ int main()
         model_mat = glm::mat4x4 { 1.0 };
         model_mat = glm::translate(model_mat, glm::vec3(0.5f, 0.0f, 0.0f));
         memcpy(draw_data.data(), &(model_mat[0][0]), 64);
+        renderable_init_info.material_ID = blue_matieral_ID;
         renderable_init_info.draw_data_ptr = draw_data.data();
         p = renderer::create_renderable(renderable_init_info, 0);
 
