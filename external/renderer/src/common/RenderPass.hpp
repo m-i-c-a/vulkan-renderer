@@ -33,6 +33,7 @@ struct SortBin
 
     uint64_t material_data_block_size = 12; // should be 0, change back
     uint64_t draw_data_block_size = 4; // By default always constains material ID
+    uint64_t draw_data_block_end_padding_size = 0;
 };
 
 struct RenderPass

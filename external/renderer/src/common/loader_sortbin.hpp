@@ -141,7 +141,8 @@ struct JSONInfo_SortBinReflection
         uint32_t descriptor_count; 
         VkShaderStageFlags shader_stage_flags;
         std::unordered_map<std::string, DescriptorVariable> variables;
-        uint32_t size = 0;
+        uint32_t size = 0u;
+        uint32_t end_padding_size = 0u;
     };
 
     struct DescriptorSetState
@@ -228,6 +229,11 @@ void from_json(const nlohmann::json& json_data, JSONInfo_SortBinReflection::Desc
     {
         info.variables.emplace(variable.name, variable);
         size = std::max(size, variable.offset + variable.size);
+
+        if (variable.name == "__padding")
+        {
+            info.end_padding_size = variable.size;
+        }
     }
 
     info.size = size;

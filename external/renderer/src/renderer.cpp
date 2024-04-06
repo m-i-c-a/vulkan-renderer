@@ -364,6 +364,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
             .descriptor_variable_draw_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).variables,
             .material_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).size,
             .draw_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).size,
+            .draw_data_block_end_padding_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).end_padding_size,
         };
 
         sortbin_list.push_back(sortbin);
@@ -535,8 +536,8 @@ static uint32_t upload_block(BufferPool_VariableBlock* buffer, const uint32_t bl
     }
     else
     {
-        memcpy(static_cast<uint8_t*>(block_ptr), data_ptr, block_size - sizeof(uint32_t));
-        memcpy(static_cast<uint8_t*>(block_ptr) + (block_size - sizeof(uint32_t)), &mat_ID, sizeof(uint32_t));
+        memcpy(static_cast<uint8_t*>(block_ptr), data_ptr, data_size);
+        memcpy(static_cast<uint8_t*>(block_ptr) + data_size, &mat_ID, sizeof(uint32_t));
     }
 
     return block_ID;
@@ -803,15 +804,15 @@ uint32_t create_mesh(const MeshInitInfo& init_info)
 {
     ASSERT(global_state.geometry_buffer != nullptr, "Global geometry buffer not initialized!\n");
 
-    const uint32_t first_index = static_cast<uint32_t>(global_state.geometry_buffer->queue_upload(
-        init_info.index_stride,
-        init_info.index_count,
-        std::vector<uint8_t>(init_info.index_data, init_info.index_data + init_info.index_count * init_info.index_stride)));
-
     const int32_t vertex_offset = global_state.geometry_buffer->queue_upload(
         init_info.vertex_stride,
         init_info.vertex_count,
         std::vector<uint8_t>(init_info.vertex_data, init_info.vertex_data + init_info.vertex_count * init_info.vertex_stride));
+
+    const uint32_t first_index = static_cast<uint32_t>(global_state.geometry_buffer->queue_upload(
+        init_info.index_stride,
+        init_info.index_count,
+        std::vector<uint8_t>(init_info.index_data, init_info.index_data + init_info.index_count * init_info.index_stride)));
 
     const uint32_t mesh_ID = static_cast<uint32_t>(global_mesh_list.size());
 
@@ -867,7 +868,7 @@ std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_i
 
     const SortBin& sortbin = global_sortbin_list[init_info.default_sortbin_id];
 
-    ASSERT(sortbin.draw_data_block_size == init_info.draw_data_size + sizeof(uint32_t), "Draw data size mismatch!\n");
+    ASSERT(sortbin.draw_data_block_size - sortbin.draw_data_block_end_padding_size == init_info.draw_data_size + sizeof(uint32_t), "Draw data size mismatch!\n");
 
     const uint32_t draw_ID = upload_block(global_state.draw_data_buffer, sortbin.draw_data_block_size, init_info.draw_data_size, init_info.draw_data_ptr, init_info.material_ID);
     const uint32_t renderable_ID = static_cast<uint32_t>(global_renderable_list.size());

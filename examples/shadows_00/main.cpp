@@ -189,9 +189,9 @@ int main()
 
         bool uploads_pending = false;
         renderer::flush_coherent_buffer_uploads(renderer::BufferType::eFrame, frame_resource_idx);
-        uploads_pending = renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eGeometry, frame_resource_idx);
-        uploads_pending = renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eMaterial, frame_resource_idx);
-        uploads_pending = renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eDraw, frame_resource_idx);
+        uploads_pending |= renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eGeometry, frame_resource_idx);
+        uploads_pending |= renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eMaterial, frame_resource_idx);
+        uploads_pending |= renderer::flush_buffer_uploads_to_staging(renderer::BufferType::eDraw, frame_resource_idx);
 
         vk_core::reset_command_pool(vk_handle_cmd_pool);
 
