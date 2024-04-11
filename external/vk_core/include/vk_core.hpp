@@ -10,6 +10,8 @@ class GLFWwindow;
 
 namespace vk_core
 {
+    VkSampler create_sampler(const VkSamplerCreateInfo& create_info);
+
     VkImage create_image(const VkImageCreateInfo& create_info);
     VkImageView create_image_view(const VkImageViewCreateInfo& create_info);
     VkDeviceMemory allocate_image_memory(const VkImage vk_handle_image, const VkMemoryPropertyFlags flags);

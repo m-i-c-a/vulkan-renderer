@@ -154,7 +154,13 @@ void from_json(const nlohmann::json& json_data, JSONInfo_RenderAttachment& info)
 
 struct JSONInfo_RenderPass
 {
-    struct AttachmentState
+    struct ReadAttachmentState
+    {
+        uint32_t id;
+        VkImageLayout image_layout;
+    };
+
+    struct WriteAttachmentState
     {
         uint32_t id;
         VkImageLayout image_layout;
@@ -167,14 +173,21 @@ struct JSONInfo_RenderPass
     {
         uint32_t id;
         std::string name;
-        std::vector<AttachmentState> color_attachment_list;
-        AttachmentState depth_attachment;
+        std::vector<ReadAttachmentState> input_attachment_list;
+        std::vector<WriteAttachmentState> color_attachment_list;
+        WriteAttachmentState depth_attachment;
     };
 
     std::vector<State> state_list;
 };
 
-void from_json(const nlohmann::json& json_data, JSONInfo_RenderPass::AttachmentState& info)
+void from_json(const nlohmann::json& json_data, JSONInfo_RenderPass::ReadAttachmentState& info)
+{
+    info.id = json_data.at("id").get<uint32_t>();
+    info.image_layout = string_to_enum_VkImageLayout(json_data.at("image-layout").get<std::string>());
+}
+
+void from_json(const nlohmann::json& json_data, JSONInfo_RenderPass::WriteAttachmentState& info)
 {
     info.id = json_data.at("id").get<uint32_t>();
     info.image_layout = string_to_enum_VkImageLayout(json_data.at("image-layout").get<std::string>());
@@ -200,6 +213,7 @@ void from_json(const nlohmann::json& json_data, JSONInfo_RenderPass::State& info
 {
     info.id = json_data.at("id").get<uint32_t>();
     info.name = json_data.at("name").get<std::string>();
+    info.input_attachment_list = json_data.at("input-attachments");
     info.color_attachment_list = json_data.at("color-attachments");
     info.depth_attachment = json_data.at("depth-attachment");
 }

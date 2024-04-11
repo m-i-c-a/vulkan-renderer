@@ -19,6 +19,8 @@
 #include <array>
 #include <inttypes.h>
 
+constexpr bool DEBUG = true;
+
 static std::vector<RenderPass::Attachment> create_render_attachments(const renderer::InitInfo& init_info)
 {
     const auto json_data = read_json_file(init_info.app_config_file);
@@ -192,7 +194,7 @@ static std::vector<RenderPass::Attachment> create_render_attachments(const rende
     return render_attachment_list;
 }
 
-static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& init_info)
+static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& init_info, std::unordered_map<std::string, uint32_t>& render_pass_name_to_id_umap)
 {
     const auto json_data = read_json_file(init_info.app_config_file);
     const JSONInfo_RenderPass render_pass_info = json_data.at("render-passes").get<JSONInfo_RenderPass>();
@@ -203,6 +205,8 @@ static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& in
     for (const JSONInfo_RenderPass::State state : render_pass_info.state_list)
     {
         const uint32_t render_pass_id = state.id;
+
+        render_pass_name_to_id_umap[state.name] = render_pass_id;
 
         // Iter through all sortbins to find sortbins assigned to this render pass
 
@@ -216,11 +220,23 @@ static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& in
             }
         }
 
-        std::vector<RenderPass::AttachmentPassInfo> color_attachment_pass_info_list;
+        std::vector<RenderPass::ReadAttachmentPassInfo> input_attachment_pass_info_list;
 
-        for (const JSONInfo_RenderPass::AttachmentState& render_pass_attachment_state : state.color_attachment_list)
+        for (const JSONInfo_RenderPass::ReadAttachmentState& read_attachment_state : state.input_attachment_list)
         {
-            const RenderPass::AttachmentPassInfo attachment_info {
+            const RenderPass::ReadAttachmentPassInfo attachment_info {
+                .attachment_idx = read_attachment_state.id,
+                .image_layout = read_attachment_state.image_layout
+            };
+
+            input_attachment_pass_info_list.push_back(attachment_info);
+        }
+
+        std::vector<RenderPass::WriteAttachmentPassInfo> color_attachment_pass_info_list;
+
+        for (const JSONInfo_RenderPass::WriteAttachmentState& render_pass_attachment_state : state.color_attachment_list)
+        {
+            const RenderPass::WriteAttachmentPassInfo attachment_info {
                 .attachment_idx = render_pass_attachment_state.id,
                 .image_layout = render_pass_attachment_state.image_layout,
                 .load_op = render_pass_attachment_state.load_op,
@@ -231,7 +247,7 @@ static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& in
             color_attachment_pass_info_list.push_back(attachment_info);
         }
 
-        RenderPass::AttachmentPassInfo depth_attachment_pass_info {
+        RenderPass::WriteAttachmentPassInfo depth_attachment_pass_info {
             .attachment_idx = state.depth_attachment.id,
             .image_layout = state.depth_attachment.image_layout,
             .load_op = state.depth_attachment.load_op,
@@ -239,13 +255,28 @@ static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& in
             .clear_value = state.depth_attachment.clear_value
         };
 
-        render_pass_list.emplace_back(std::move(sortbin_ids), std::move(color_attachment_pass_info_list), std::move(depth_attachment_pass_info));
+        RenderPass::InitInfo render_pass_init_info {
+            .frame_resource_count = init_info.frame_resource_count,
+            .supported_sortbin_id_list = std::move(sortbin_ids),
+            .read_attachment_pass_info_list = std::move(input_attachment_pass_info_list),
+            .write_color_attachment_pass_info_list = std::move(color_attachment_pass_info_list),
+            .write_depth_attachment_pass_info = std::move(depth_attachment_pass_info)
+        };
+
+        RenderPass render_pass(std::move(render_pass_init_info));
+
+        render_pass_list.push_back(render_pass);
     }
 
     return render_pass_list;
 }
 
-static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info, const std::vector<RenderPass>& render_pass_list, const std::vector<RenderPass::Attachment> render_attachment_list, const VkDescriptorSetLayout vk_handle_global_desc_set_layout )
+static std::vector<SortBin> create_sortbins(
+    const renderer::InitInfo& init_info,
+    const std::vector<RenderPass>& render_pass_list,
+    const std::vector<RenderPass::Attachment> render_attachment_list,
+    const VkDescriptorSetLayout vk_handle_frame_desc_set_layout,
+    std::unordered_map<std::string, uint16_t>& sortbin_name_to_id_umap)
 {
     std::vector<SortBin> sortbin_list;
 
@@ -259,7 +290,11 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
 
     for (const JSONInfo_AppSortBin::State& app_sortbin_state : app_sortbin_data.sortbin_list)
     {
+        ASSERT(sortbin_data.state_umap.contains(app_sortbin_state.name), "Sortbin %s not found in sortbin config file!\n", app_sortbin_state.name.c_str());
         const JSONInfo_SortBin::State& sortbin_state = sortbin_data.state_umap.at(app_sortbin_state.name);
+        const RenderPass& render_pass = render_pass_list[app_sortbin_state.render_pass_id];
+
+        sortbin_name_to_id_umap[sortbin_state.sortbin_name] = app_sortbin_state.id;
 
         // Pipeline State Processing
 
@@ -273,21 +308,21 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
 
         const JSONInfo_SortBinReflection::State& sortbin_reflection_state = sortbin_reflection_data.state_umap.at(sortbin_state.sortbin_name);
 
-        process_reflection_state(sortbin_reflection_state, pipeline_info, vk_handle_global_desc_set_layout);
+        // sortbin_reflection_state.
+
+        process_reflection_state(sortbin_reflection_state, vk_handle_frame_desc_set_layout, render_pass.get_desc_set_layout(), pipeline_info);
 
         // Rendering Info
 
         std::vector<VkFormat> color_attachment_format_list;
 
-        const RenderPass& render_pass = render_pass_list[app_sortbin_state.render_pass_id];
-
-        for (const RenderPass::AttachmentPassInfo& attachment_pass_info : render_pass.color_attachment_pass_info_list)
+        for (const RenderPass::WriteAttachmentPassInfo& attachment_pass_info : render_pass.write_color_attachment_pass_info_list)
         {
             const RenderPass::Attachment& attachment = render_attachment_list[attachment_pass_info.attachment_idx];
             color_attachment_format_list.push_back(attachment.format);
         }
 
-        const VkFormat depth_attachment_format = render_attachment_list[render_pass.depth_attachment_pass_info.attachment_idx].format;
+        const VkFormat depth_attachment_format = render_attachment_list[render_pass.write_depth_attachment_pass_info.attachment_idx].format;
 
         const VkPipelineRenderingCreateInfo rendering_create_info {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -312,7 +347,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
             .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
         };
 
-        for (const RenderPass::AttachmentPassInfo& attachment_pass_info : render_pass.color_attachment_pass_info_list)
+        for (const RenderPass::WriteAttachmentPassInfo& attachment_pass_info : render_pass.write_color_attachment_pass_info_list)
         {
             pipeline_info.color_blend_attachment_state_list.push_back(blend_state_none);
         }
@@ -355,6 +390,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
         };
 
         SortBin sortbin {
+            .name = sortbin_state.sortbin_name,
             .vk_handle_pipeline = vk_core::create_graphics_pipeline(graphics_pipeline_create_info),
             .vk_handle_pipeline_layout = pipeline_info.vk_handle_pipeline_layout,
             .vertex_type = 0,
@@ -370,7 +406,6 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
 
         sortbin_list.push_back(sortbin);
 
-
         for (const VkPipelineShaderStageCreateInfo& shader_stage_create_info : pipeline_info.shader_stage_create_info_list)
         {
             vk_core::destroy_shader_module(shader_stage_create_info.module);
@@ -380,7 +415,7 @@ static std::vector<SortBin> create_sortbins(const renderer::InitInfo& init_info,
     return sortbin_list;
 }
 
-static VkDescriptorSetLayout create_desc_set_layout()
+static VkDescriptorSetLayout create_frame_desc_set_layout()
 {
     const std::array<VkDescriptorSetLayoutBinding, 3> desc_set_layout_binding_list {{
         {
@@ -417,24 +452,37 @@ static VkDescriptorSetLayout create_desc_set_layout()
     return vk_core::create_desc_set_layout(desc_set_layout_create_info);
 }
 
-static VkDescriptorPool create_desc_pool(const uint32_t frame_resource_count)
+static VkDescriptorPool create_global_desc_pool(const uint32_t frame_resource_count, const uint32_t render_pass_count, const uint32_t total_render_pass_input_attachment_count)
 {
-    const std::array<VkDescriptorPoolSize, 2> desc_pool_sizes {{
+    const std::array<VkDescriptorPoolSize, 3> desc_pool_sizes {{
         {
+            // 1 Frame UBO
             .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = frame_resource_count,
         },
         {
+            // 1 Material SSBO
+            // 1 Draw SSBO
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = frame_resource_count * 2,
         },
+        {
+            // 1 Renderpass Input Attachment Array
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = frame_resource_count * total_render_pass_input_attachment_count,
+        }
     }};
+
+    const uint32_t max_desc_sets = 
+        frame_resource_count * 1 +                              // 1 Frame Set per frame resource
+        frame_resource_count * render_pass_count; // 1 RenderPass Set (for each renderpass) per frame resou
+
 
     const VkDescriptorPoolCreateInfo desc_pool_create_info {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0x0,
-        .maxSets = frame_resource_count,
+        .maxSets = max_desc_sets,
         .poolSizeCount = static_cast<uint32_t>(desc_pool_sizes.size()),
         .pPoolSizes = desc_pool_sizes.data()
     };
@@ -442,7 +490,17 @@ static VkDescriptorPool create_desc_pool(const uint32_t frame_resource_count)
     return vk_core::create_desc_pool(desc_pool_create_info);
 }
 
-static std::vector<VkDescriptorSet> create_desc_sets(const uint32_t frame_resource_count, const VkDescriptorSetLayout vk_handle_desc_set_layout, const VkDescriptorPool vk_handle_desc_pool)
+static void init_render_passes(const uint32_t frame_resource_count, const VkDescriptorPool vk_handle_desc_pool, const std::vector<RenderPass::Attachment>& render_attachment_list, std::vector<RenderPass>& render_pass_list)
+{
+    RenderPass::create_input_attachment_sampler();
+
+    for (RenderPass& render_pass : render_pass_list)
+    {
+        render_pass.init_desc_sets(frame_resource_count, vk_handle_desc_pool, render_attachment_list);
+    }
+}
+
+static std::vector<VkDescriptorSet> create_frame_desc_sets(const uint32_t frame_resource_count, const VkDescriptorSetLayout vk_handle_desc_set_layout, const VkDescriptorPool vk_handle_desc_pool)
 {
     const std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list(frame_resource_count, vk_handle_desc_set_layout);
 
@@ -457,7 +515,7 @@ static std::vector<VkDescriptorSet> create_desc_sets(const uint32_t frame_resour
     return vk_core::allocate_desc_sets(desc_set_alloc_info);
 }
 
-static void update_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list)
+static void init_frame_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list)
 {
     for (uint32_t i = 0; i < frame_resource_count; i++)
     {
@@ -501,7 +559,7 @@ static void update_desc_sets(const uint32_t frame_resource_count, const UniformB
                 .pImageInfo = nullptr,
                 .pBufferInfo = &draw_ssbo_desc_buffer_info,
                 .pTexelBufferView = nullptr,
-            }
+            },
         }};
 
         vk_core::update_desc_sets(static_cast<uint32_t>(write_desc_set_list.size()), write_desc_set_list.data(), 0, nullptr);
@@ -628,7 +686,15 @@ struct GlobalState
     BufferPool_VariableBlock* draw_data_buffer = nullptr;
     StagingBuffer*            staging_buffer = nullptr;
 
+    // Maps material_name -> Material Object 
+    // Exists to support material sharing across draws
     std::unordered_map<std::string, Material> material_umap;
+
+    // Maps render_pass_name -> RenderPass ID (index into render_pass_list)
+    std::unordered_map<std::string, uint32_t> render_pass_name_to_id_umap;
+
+    // Maps sortbin_name -> Sortbin ID (index into sortbin_list)
+    std::unordered_map<std::string, uint16_t> sortbin_name_to_id_umap;
 
 } global_state;
 
@@ -639,9 +705,9 @@ static std::vector<RenderPass::Attachment> global_render_attachment_list;
 static std::vector<RenderPass> global_render_pass_list;
 static std::vector<SortBin> global_sortbin_list;
 
-static VkDescriptorSetLayout vk_handle_global_desc_set_layout;
 static VkDescriptorPool vk_handle_global_desc_pool;
-static std::vector<VkDescriptorSet> vk_handle_global_desc_set_list;
+static VkDescriptorSetLayout        vk_handle_frame_desc_set_layout;
+static std::vector<VkDescriptorSet> vk_handle_frame_desc_set_list;
 
 
 
@@ -673,14 +739,19 @@ void init(const InitInfo& init_info)
     global_state.material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
     global_state.draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
 
-    vk_handle_global_desc_set_layout = create_desc_set_layout();
-    vk_handle_global_desc_pool = create_desc_pool(init_info.frame_resource_count);
-    vk_handle_global_desc_set_list = create_desc_sets(init_info.frame_resource_count, vk_handle_global_desc_set_layout, vk_handle_global_desc_pool);
-    update_desc_sets(init_info.frame_resource_count, global_state.frame_uniform_buffer, global_state.material_data_buffer, global_state.draw_data_buffer, vk_handle_global_desc_set_list);
 
-    global_render_attachment_list = create_render_attachments(init_info);
-    global_render_pass_list = create_render_passes(init_info);
-    global_sortbin_list = create_sortbins(init_info, global_render_pass_list, global_render_attachment_list, vk_handle_global_desc_set_layout);
+
+
+
+    global_render_pass_list         = create_render_passes(init_info, global_state.render_pass_name_to_id_umap);
+    global_render_attachment_list   = create_render_attachments(init_info);
+    vk_handle_global_desc_pool      = create_global_desc_pool(init_info.frame_resource_count, global_render_pass_list.size(), RenderPass::get_input_attachment_count());
+    vk_handle_frame_desc_set_layout = create_frame_desc_set_layout();
+    vk_handle_frame_desc_set_list   = create_frame_desc_sets(init_info.frame_resource_count, vk_handle_frame_desc_set_layout, vk_handle_global_desc_pool);
+    global_sortbin_list             = create_sortbins(init_info, global_render_pass_list, global_render_attachment_list, vk_handle_frame_desc_set_layout, global_state.sortbin_name_to_id_umap);
+
+    init_render_passes(init_info.frame_resource_count, vk_handle_global_desc_pool, global_render_attachment_list, global_render_pass_list);
+    init_frame_desc_sets(init_info.frame_resource_count, global_state.frame_uniform_buffer, global_state.material_data_buffer, global_state.draw_data_buffer, vk_handle_frame_desc_set_list);
 }
 
 void terminate()
@@ -692,7 +763,7 @@ void terminate()
     delete global_state.staging_buffer;
 
     vk_core::destroy_desc_pool(vk_handle_global_desc_pool);
-    vk_core::destroy_desc_set_layout(vk_handle_global_desc_set_layout);
+    vk_core::destroy_desc_set_layout(vk_handle_frame_desc_set_layout);
 
     for (const SortBin& sortbin : global_sortbin_list)
     {
@@ -724,9 +795,26 @@ void terminate()
     }
 }
 
-void record_render_pass(const uint32_t renderpass_id, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx)
+void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx)
 {
-    const RenderPass& render_pass = global_render_pass_list[renderpass_id];
+    if constexpr (DEBUG)
+    {
+        if (!global_state.render_pass_name_to_id_umap.contains(render_pass_name))
+        {
+            std::string available_render_pass_name_list = "";
+            for (const auto& [name, id] : global_state.render_pass_name_to_id_umap)
+            {
+                available_render_pass_name_list += "\t" + name + "\n";
+            }
+
+            EXIT("ERROR: Render pass %s not found!\nAvailable RenderPasses are...\n%s",
+                 render_pass_name.c_str(),
+                 available_render_pass_name_list.c_str());
+        }
+    }
+
+    const uint32_t render_pass_ID = global_state.render_pass_name_to_id_umap.at(render_pass_name);
+    const RenderPass& render_pass = global_render_pass_list[render_pass_ID];
 
     const RenderPass::RecordInfo record_info {
         .frame_idx = frame_resource_idx,
@@ -739,7 +827,7 @@ void record_render_pass(const uint32_t renderpass_id, const VkCommandBuffer vk_h
             global_state.geometry_buffer->get_vk_handle_buffer(),
             global_state.geometry_buffer->get_vk_handle_buffer()
         },
-        .vk_handle_global_desc_set = vk_handle_global_desc_set_list[frame_resource_idx],
+        .vk_handle_global_desc_set = vk_handle_frame_desc_set_list[frame_resource_idx],
     };
 
     const VkBuffer vk_handle_geometry_buffer = global_state.geometry_buffer->get_vk_handle_buffer();
@@ -754,6 +842,11 @@ VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_
     return global_render_attachment_list[attachment_id].vk_handle_image_list[frame_resource_idx];
 }
 
+uint16_t get_sortbin_ID(const std::string& sortbin_name)
+{
+    return global_state.sortbin_name_to_id_umap.at(sortbin_name);
+}
+
 
 std::pair<uint32_t, uint16_t> copy_renderable(const uint32_t copy_from_renderable_id) { return {}; }
 bool renderable_supports_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id) { return false; }
@@ -764,6 +857,8 @@ void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sort
 {
     const Renderable& renderable = global_renderable_list[renderable_id];
     const Mesh& mesh = global_mesh_list[renderable.mesh_id];
+
+    // Check for supported set here
 
     const DrawInfo draw_info {
         .index_count = mesh.index_count,
@@ -779,22 +874,22 @@ void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sort
     {
         case 4:
         {
-            global_sortbin_list[mesh.sortbin_id].draw_list_u32.push_back(draw_info);
+            global_sortbin_list[sortbin_id].draw_list_u32.push_back(draw_info);
             break;
         }
         case 2:
         {
-            global_sortbin_list[mesh.sortbin_id].draw_list_u16.push_back(draw_info);
+            global_sortbin_list[sortbin_id].draw_list_u16.push_back(draw_info);
             break;
         }
         case 1:
         {
-            global_sortbin_list[mesh.sortbin_id].draw_list_u8.push_back(draw_info);
+            global_sortbin_list[sortbin_id].draw_list_u8.push_back(draw_info);
             break;
         }
         default:
         {
-            global_sortbin_list[mesh.sortbin_id].draw_list.push_back(draw_info);
+            global_sortbin_list[sortbin_id].draw_list.push_back(draw_info);
             break;
         }
     };

@@ -18,26 +18,28 @@ struct DrawData
     uint __padding[3];
 };
 
-layout(set=0, binding=0) uniform FrameUBO
+layout(set=0, binding=0) uniform Frame_UBO
 {
     mat4 proj_mat;
     mat4 view_mat;
-} frame_ubo;;
+} frame_ubo;
 
-layout(set=0, binding=1) buffer readonly MaterialSSBO
+layout(set=0, binding=1) buffer readonly Frame_MaterialSSBO
 {
     MaterialData data[];
-} mat_ssbo;
+} frame_mat_ssbo;
 
-layout(set=0, binding=2) buffer readonly DrawSSBO
+layout(set=0, binding=2) buffer readonly frame_DrawSSBO
 {
     DrawData data[];
-} draw_ssbo;
+} frame_draw_ssbo;
+
+layout(set=1, binding=0) uniform sampler2D Pass_InputAttachments[1];
 
 void main()
 {
-    DrawData draw_data = draw_ssbo.data[gl_InstanceIndex];
-    MaterialData mat_data = mat_ssbo.data[draw_data.mat_id];
+    DrawData draw_data = frame_draw_ssbo.data[gl_InstanceIndex];
+    MaterialData mat_data = frame_mat_ssbo.data[draw_data.mat_id];
 
     gl_Position = frame_ubo.proj_mat * frame_ubo.view_mat * draw_data.model_matrix * vec4(in_pos, 1.0);
     out_color = mat_data.color;

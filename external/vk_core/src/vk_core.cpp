@@ -403,8 +403,6 @@ static VkPresentModeKHR getSwapchainPresentMode(const VkPhysicalDevice vk_physic
     //     }
     // }
 
-    LOG("%d\n", vk_presentMode);
-
     delete [] supportedPresentModes;
     return vk_presentMode;
 }
@@ -655,6 +653,13 @@ void terminate()
 }
 
 
+
+VkSampler create_sampler(const VkSamplerCreateInfo& create_info)
+{
+    VkSampler vk_handle_sampler = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateSampler(vk_handle_device, &create_info, nullptr, &vk_handle_sampler));
+    return vk_handle_sampler;;
+}
 
 VkImage create_image(const VkImageCreateInfo& create_info)
 {

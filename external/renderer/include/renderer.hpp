@@ -81,6 +81,8 @@ namespace renderer
         eDraw,
     };
 
+    uint16_t get_sortbin_ID(const std::string& sortbin_name);
+
     uint32_t get_material_ID(const std::string& material_name);
 
     uint32_t create_mesh(const MeshInitInfo& init_info);
@@ -104,7 +106,7 @@ namespace renderer
     void update_material_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
     void update_draw_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
 
-    void record_render_pass(const uint32_t renderpass_id, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx);
+    void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx);
 
     void flush_staging_buffer(const VkCommandBuffer vk_handle_cmd_buff);
     void flush_frame_data_uploads(const uint32_t frame_resource_idx);

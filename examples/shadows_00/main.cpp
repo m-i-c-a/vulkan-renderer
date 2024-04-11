@@ -95,6 +95,7 @@ int main()
 
     std::array<Entity, 2> entity_list;
 
+    // Geometry Upload
     {
         struct Vertex
         {
@@ -175,7 +176,7 @@ int main()
             .material_ID = green_material_ID,
             .draw_data_ptr = draw_data.data(),
             .draw_data_size = static_cast<uint32_t>(draw_data.size()),
-            .default_sortbin_id = 0,
+            .default_sortbin_id = renderer::get_sortbin_ID("default"),
         };
 
         auto p = renderer::create_renderable(renderable_init_info, 0);
@@ -195,12 +196,16 @@ int main()
         entity_list[1].sortbin_id = p.second;
     }
 
+    // Scene Initialization
     {
         Camera::proj_mat = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
         Camera::view_mat[3] = glm::vec4(0.0f, 4.5f, -14.0f, 1.0f); 
 
         renderer::add_renderable_to_sortbin(entity_list[0].renderable_id, entity_list[0].sortbin_id);
         renderer::add_renderable_to_sortbin(entity_list[1].renderable_id, entity_list[1].sortbin_id);
+
+        renderer::add_renderable_to_sortbin(entity_list[0].renderable_id, renderer::get_sortbin_ID("depth-only"));
+        renderer::add_renderable_to_sortbin(entity_list[1].renderable_id, renderer::get_sortbin_ID("depth-only"));
     }
 
     uint32_t frame_idx = 0;
@@ -271,7 +276,47 @@ int main()
             vkBeginCommandBuffer(vk_handle_cmd_buff, &cmd_buff_begin_info);
         }
         
-        renderer::record_render_pass(0, vk_handle_cmd_buff, {0, 0, window_width, window_height}, frame_resource_idx);
+        renderer::record_render_pass("shadow-pass", vk_handle_cmd_buff, {0, 0, window_width, window_height}, frame_resource_idx);
+
+        VkImageMemoryBarrier image_barrier {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .srcQueueFamilyIndex = 0,
+            .dstQueueFamilyIndex = 0,
+            .image = renderer::get_attachment_image(2, frame_resource_idx),
+            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1},
+        };
+
+        vkCmdPipelineBarrier(
+            vk_handle_cmd_buff,
+            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+            0x0,
+            0, nullptr,
+            0, nullptr,
+            1, &image_barrier);
+
+        renderer::record_render_pass("default", vk_handle_cmd_buff, {0, 0, window_width, window_height}, frame_resource_idx);
+
+        image_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        image_barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        image_barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+        vkCmdPipelineBarrier(
+            vk_handle_cmd_buff,
+            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+            0x0,
+            0, nullptr,
+            0, nullptr,
+            1, &image_barrier);
 
         blit(frame_resource_idx, vk_handle_cmd_buff);
 

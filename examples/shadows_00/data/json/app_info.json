@@ -8,22 +8,54 @@
         },
         "render-attachment-list" : [
             {
+                "name" : "eye-color",
                 "format" : "VK_FORMAT_R8G8B8A8_UNORM",
                 "usage" : [ "VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT", "VK_IMAGE_USAGE_TRANSFER_SRC_BIT" ]
             },
             {
+                "name" : "eye-depth",
                 "format" : "VK_FORMAT_D32_SFLOAT",
                 "usage" : [ "VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT" ]
+            },
+            {
+                "name" : "shadow-map",
+                "format" : "VK_FORMAT_D32_SFLOAT",
+                "usage" : [ "VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT", "VK_IMAGE_USAGE_SAMPLED_BIT" ]
             }
         ]
     },
     "render-passes" : [
         {
             "id" : 0,
+            "name" : "shadow-pass",
+            "input-attachments" : [],
+            "color-attachments" : [],
+            "depth-attachment" : {
+                "id" : 2,
+                "name" : "shadow-map",
+                "image-layout" : "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL",
+                "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
+                "store-op" : "VK_ATTACHMENT_STORE_OP_STORE",
+                "clear-value" : {
+                    "depth" : 1.0
+                }
+            },
+            "desc-set-bindings" : []
+        },
+        {
+            "id" : 1,
             "name" : "default",
+            "input-attachments" : [
+                {
+                    "id" : 2,
+                    "name" : "shadow-map",
+                    "image-layout" : "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL"
+                }
+            ],
             "color-attachments" : [
                 {
                     "id" : 0,
+                    "name" : "eye-color",
                     "image-layout" : "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL",
                     "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
                     "store-op" : "VK_ATTACHMENT_STORE_OP_STORE",
@@ -34,20 +66,34 @@
             ],
             "depth-attachment" : {
                 "id" : 1,
+                "name" : "eye-depth",
                 "image-layout" : "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL",
                 "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
                 "store-op" : "VK_ATTACHMENT_STORE_OP_DONT_CARE",
                 "clear-value" : {
                     "depth" : 0
                 }
-            }
+            },
+            "desc-set-bindings" : [
+                {
+                    "binding-id" : 0,
+                    "descriptor-type" : "VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER",
+                    "descriptor-count" : 1,
+                    "stage-flags" : [ "VK_SHADER_STAGE_FRAGMENT_BIT" ]
+                }
+            ]
         }
     ],
     "sortbins" : [
         {
             "id" : 0,
-            "name" : "standard",
+            "name" : "depth-only",
             "renderpass-id" : 0
+        },
+        {
+            "id" : 1,
+            "name" : "default",
+            "renderpass-id" : 1
         }
     ]
 }
