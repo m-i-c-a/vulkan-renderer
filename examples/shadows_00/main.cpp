@@ -74,19 +74,25 @@ int main()
     assert(glfw_window && "Failed to create window");
     glfwSetKeyCallback(glfw_window, key_callback);
 
-    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/vulkan_info.json");
+    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/vulkan_state.json");
 
     const renderer::InitInfo renderer_init_info {
         .window_width = window_width, 
         .window_height = window_height, 
         .frame_resource_count = frame_resource_count, 
-        .app_config_file = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/app_info.json", 
-        .sortbin_config_file = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/sortbin_info.json",
-        .sortbin_reflection_config_file = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/sortbin_reflection_info_simple.json",
-        .shader_root_path = "/home/mica/Desktop/clean-start/examples/shadows_00/data/shaders/spirv/",
+        .refl_file_frame_desc_set_def = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/reflection/frame_desc_set_reflection.json",
+        .refl_file_sortbin_mat_draw_def = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/reflection/sortbin_reflection.json",
+        .file_sortbin_pipeline_state = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/sortbin_pipeline_state.json",
+        .file_app_state = "/home/mica/Desktop/clean-start/examples/shadows_00/data/json/app_state.json", 
+        .path_shader_root = "/home/mica/Desktop/clean-start/examples/shadows_00/data/shaders/spirv/",
     };
 
     renderer::init(renderer_init_info);
+
+    renderer::terminate();
+    vk_core::terminate();
+
+#if 0
 
     const VkCommandPool vk_handle_cmd_pool = vk_core::create_command_pool(0x0);
     const VkCommandBuffer vk_handle_cmd_buff = vk_core::allocate_command_buffer(vk_handle_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
@@ -458,4 +464,7 @@ void blit(const uint32_t frame_resource_idx, const VkCommandBuffer vk_handle_cmd
         0, nullptr,
         0, nullptr,
         2, post_blit_image_barriers);
+}
+
+#endif
 }

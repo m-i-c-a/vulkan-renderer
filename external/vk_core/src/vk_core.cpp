@@ -509,7 +509,7 @@ static std::vector<VkImageView> create_swapchain_image_views(const VkDevice vk_d
         VK_CHECK(vkCreateImageView(vk_device, &vk_imageViewCreateInfo, nullptr, &vk_swapchainImageViews[i]));
     }
 
-    LOG("Swapchain Image Count: %lu\n", vk_swapchainImages.size());
+    LOG("Vulkan Info - # Swapchain Images: %lu\n", vk_swapchainImages.size());
     return vk_swapchainImageViews;
 }
 

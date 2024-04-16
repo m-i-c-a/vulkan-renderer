@@ -1,38 +1,19 @@
-#ifndef RENDERER_GEOMETRY_BUFFER_HPP
-#define RENDERER_GEOMETRY_BUFFER_HPP
-
+#include "GeometryBuffer.hpp"
 #include "vk_core.hpp"
-#include "UploadInfo.hpp"
 
-#include <vulkan/vulkan.h>
+GeometryBuffer::GeometryBuffer(const uint64_t size)
+{    
+    const VkBufferCreateInfo create_info {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0x0,
+        .size = 1024 * 1024, 
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr
+    };
 
-#include <vector>
-#include <cmath>
-
-struct GeometryBuffer
-{
-private:
-    VkBuffer m_vk_handle_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory m_vk_handle_buffer_memory = VK_NULL_HANDLE;
-    VkDeviceSize m_buffer_size = 0;
-    VkDeviceSize m_buffer_offset = 0;
-
-    std::vector<UploadInfo> m_queued_upload_list;
-
-public:
-    GeometryBuffer(const VkBufferCreateInfo& create_info);
-    ~GeometryBuffer();
-
-    int32_t queue_upload(const uint32_t stride, const uint32_t count, std::vector<uint8_t>&& data);
-
-    std::vector<UploadInfo>&& get_queued_uploads() { return std::move(m_queued_upload_list); }
-    void reset_queued_uploads() { m_queued_upload_list.clear(); }
-
-    VkBuffer get_vk_handle_buffer() const { return m_vk_handle_buffer; }
-};
-
-GeometryBuffer::GeometryBuffer(const VkBufferCreateInfo &create_info)
-{
     m_vk_handle_buffer = vk_core::create_buffer(create_info);
     m_vk_handle_buffer_memory = vk_core::allocate_buffer_memory(m_vk_handle_buffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_buffer_size);
     vk_core::bind_buffer_memory(m_vk_handle_buffer, m_vk_handle_buffer_memory);
@@ -68,5 +49,3 @@ int32_t GeometryBuffer::queue_upload(const uint32_t stride, const uint32_t count
 
     return nth_entity;
 }
-
-#endif // RENDERER_GEOMETRY_BUFFER_HPP

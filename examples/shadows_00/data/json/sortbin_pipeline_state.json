@@ -1,0 +1,106 @@
+{
+    "sortbins" : [
+        {
+            "name" : "default_v3v3v2_pos-norm-tc",
+            "pipeline-state" : {
+                "shader-state" : [
+                    "std.vert",
+                    "std.frag"
+                ], 
+                "vertex-input-state" : {
+                    "vertex-input-binding-desc" : [
+                        {
+                            "binding" : 0,
+                            "stride" : 30,
+                            "input-rate" : "VK_VERTEX_INPUT_RATE_VERTEX"
+                        }
+                    ],
+                    "vertex-input-attrib-desc" : [
+                        {
+                            "usage" : "vertex_pos",
+                            "location" : 0,
+                            "binding" : 0,
+                            "format" : "VK_FORMAT_R32G32B32_SFLOAT",
+                            "offset" : 0
+                        },
+                        {
+                            "usage" : "vertex_normal",
+                            "location" : 1,
+                            "binding" : 0,
+                            "format" : "VK_FORMAT_R32G32B32_SFLOAT",
+                            "offset" : 12
+                        },
+                        {
+                            "usage" : "vertex_texcoord",
+                            "location" : 2,
+                            "binding" : 0,
+                            "format" : "VK_FORMAT_R32G32_SFLOAT",
+                            "offset" : 24 
+                        }
+                    ]
+                },
+                "input-assembly-state" : {
+                    "topology" : "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
+                },
+                "rasterization-state" : {
+                    "polygon-mode" : "VK_POLYGON_MODE_FILL",
+                    "cull-mode" : "VK_CULL_MODE_NONE",
+                    "front-face" : "VK_FRONT_FACE_CLOCKWISE"
+                },
+                "depth-stencil-state" : {
+                    "depth-test-enable" : false,
+                    "depth-write-enable" : false,
+                    "depth-compare-op" : "VK_COMPARE_OP_LESS",
+                    "stencil-test-enable" : false
+                },
+                "color-blend-state" : {
+                    "blend-enabled" : 0
+                }
+            }
+        },
+        {
+            "name" : "default-depth-only_v3v3v2_pos-X-X",
+            "pipeline-state" : {
+                "shader-state" : [
+                    "depth_pass.vert",
+                    "depth_pass.frag"
+                ], 
+                "vertex-input-state" : {
+                    "vertex-input-binding-desc" : [
+                        {
+                            "binding" :  0,
+                            "stride"  : 30,
+                            "input-rate" : "VK_VERTEX_INPUT_RATE_VERTEX"
+                        }
+                    ],
+                    "vertex-input-attrib-desc" : [
+                        {
+                            "usage" : "vertex_pos",
+                            "location" : 0,
+                            "binding" : 0,
+                            "format" : "VK_FORMAT_R32G32B32_SFLOAT",
+                            "offset" : 0
+                        }
+                    ]
+                },
+                "input-assembly-state" : {
+                    "topology" : "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
+                },
+                "rasterization-state" : {
+                    "polygon-mode" : "VK_POLYGON_MODE_FILL",
+                    "cull-mode" : "VK_CULL_MODE_NONE",
+                    "front-face" : "VK_FRONT_FACE_CLOCKWISE"
+                },
+                "depth-stencil-state" : {
+                    "depth-test-enable" : true,
+                    "depth-write-enable" : true,
+                    "depth-compare-op" : "VK_COMPARE_OP_LESS",
+                    "stencil-test-enable" : false
+                },
+                "color-blend-state" : {
+                    "blend-enabled" : 0
+                }
+            }
+        }
+    ]
+}

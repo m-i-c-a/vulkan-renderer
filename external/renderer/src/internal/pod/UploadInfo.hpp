@@ -3,6 +3,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include <inttypes.h>
 #include <vector>
 
 struct UploadInfo

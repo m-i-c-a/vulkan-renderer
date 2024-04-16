@@ -26,12 +26,10 @@
     },
     "render-passes" : [
         {
-            "id" : 0,
             "name" : "shadow-pass",
             "input-attachments" : [],
             "color-attachments" : [],
             "depth-attachment" : {
-                "id" : 2,
                 "name" : "shadow-map",
                 "image-layout" : "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL",
                 "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
@@ -39,22 +37,18 @@
                 "clear-value" : {
                     "depth" : 1.0
                 }
-            },
-            "desc-set-bindings" : []
+            }
         },
         {
-            "id" : 1,
             "name" : "default",
             "input-attachments" : [
                 {
-                    "id" : 2,
                     "name" : "shadow-map",
                     "image-layout" : "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL"
                 }
             ],
             "color-attachments" : [
                 {
-                    "id" : 0,
                     "name" : "eye-color",
                     "image-layout" : "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL",
                     "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
@@ -65,7 +59,6 @@
                 }
             ],
             "depth-attachment" : {
-                "id" : 1,
                 "name" : "eye-depth",
                 "image-layout" : "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL",
                 "load-op" : "VK_ATTACHMENT_LOAD_OP_CLEAR",
@@ -73,27 +66,17 @@
                 "clear-value" : {
                     "depth" : 0
                 }
-            },
-            "desc-set-bindings" : [
-                {
-                    "binding-id" : 0,
-                    "descriptor-type" : "VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER",
-                    "descriptor-count" : 1,
-                    "stage-flags" : [ "VK_SHADER_STAGE_FRAGMENT_BIT" ]
-                }
-            ]
+            }
         }
     ],
     "sortbins" : [
         {
-            "id" : 0,
-            "name" : "depth-only",
-            "renderpass-id" : 0
+            "name" : "default-depth-only_v3v3v2_pos-X-X",
+            "render-pass-name" : "shadow-pass"
         },
         {
-            "id" : 1,
-            "name" : "default",
-            "renderpass-id" : 1
+            "name" : "default_v3v3v2_pos-norm-tc",
+            "render-pass-name" : "default"
         }
     ]
 }

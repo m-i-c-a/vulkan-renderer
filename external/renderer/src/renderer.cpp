@@ -1,19 +1,23 @@
 #include "renderer.hpp"
 
-#include "UploadInfo.hpp"
-#include "Renderable.hpp"
+// #include "UploadInfo.hpp"
+// #include "Renderable.hpp"
 
-#include "common/defines.hpp"
-#include "common/loader_renderpass.hpp"
-#include "common/loader_sortbin.hpp"
-#include "common/RenderPass.hpp"
-#include "common/GeometryBuffer.hpp"
-#include "common/StagingBuffer.hpp"
-#include "common/BufferPool_VariableBlock.hpp"
-#include "common/UniformBuffer.hpp"
+// #include "common/defines.hpp"
+// #include "common/loader_renderpass.hpp"
+// #include "common/loader_sortbin.hpp"
+// #include "common/RenderPass.hpp"
+// #include "common/GeometryBuffer.hpp"
+// #include "common/StagingBuffer.hpp"
+// #include "common/BufferPool_VariableBlock.hpp"
+// #include "common/UniformBuffer.hpp"
 
-#include "vk_core.hpp"
-#include "json.hpp"
+// #include "common/json_structures.hpp"
+
+// #include "vk_core.hpp"
+// #include "json.hpp"
+
+#include "GlobalState.hpp"
 
 #include <vector>
 #include <array>
@@ -21,499 +25,7 @@
 
 constexpr bool DEBUG = true;
 
-static std::vector<RenderPass::Attachment> create_render_attachments(const renderer::InitInfo& init_info)
-{
-    const auto json_data = read_json_file(init_info.app_config_file);
-    const JSONInfo_RenderAttachment render_attachment_info = json_data.at("render-attachments").get<JSONInfo_RenderAttachment>();
-
-    std::vector<RenderPass::Attachment> render_attachment_list;
-    std::vector<VkImageMemoryBarrier> image_memory_barriers;
-
-    for (const JSONInfo_RenderAttachment::ImageState& render_attachment_image_state : render_attachment_info.image_state_list)
-    {
-        VkImageCreateInfo image_create_info {};
-        image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_create_info.pNext = nullptr;
-        image_create_info.flags = 0x0;
-        image_create_info.imageType = VK_IMAGE_TYPE_2D;
-        image_create_info.mipLevels = 1;
-        image_create_info.arrayLayers = 1;
-        image_create_info.queueFamilyIndexCount = 0;
-        image_create_info.pQueueFamilyIndices = nullptr;
-        image_create_info.extent = {init_info.window_width, init_info.window_height, 1};
-
-        VkImageMemoryBarrier image_memory_barrier {};
-        image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        image_memory_barrier.pNext = nullptr;
-        image_memory_barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-        image_memory_barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-        image_memory_barrier.srcQueueFamilyIndex = vk_core::get_queue_family_idx();
-        image_memory_barrier.dstQueueFamilyIndex = vk_core::get_queue_family_idx();
-        image_memory_barrier.subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-
-        // Shared
-
-        if (render_attachment_info.shared_image_state.format.has_value()) 
-        {
-            image_create_info.format = render_attachment_info.shared_image_state.format.value();
-        }
-        else
-        {
-            image_create_info.format = render_attachment_image_state.format.value();
-        }
-
-        if (render_attachment_info.shared_image_state.num_samples.has_value())
-        {
-            image_create_info.samples = render_attachment_info.shared_image_state.num_samples.value();
-        }
-        else
-        {
-            image_create_info.samples = render_attachment_image_state.num_samples.value();
-        }
-
-        if (render_attachment_info.shared_image_state.tiling.has_value())
-        {
-            image_create_info.tiling = render_attachment_info.shared_image_state.tiling.value();
-        }
-        else
-        {
-            image_create_info.tiling = render_attachment_image_state.tiling.value();
-        }
-        
-        if (render_attachment_info.shared_image_state.sharing_mode.has_value())
-        {
-            image_create_info.sharingMode = render_attachment_info.shared_image_state.sharing_mode.value();
-        }
-        else
-        {
-            image_create_info.sharingMode = render_attachment_image_state.sharing_mode.value();
-        }
-
-        if (render_attachment_info.shared_image_state.initial_layout.has_value())
-        {
-            image_create_info.initialLayout = render_attachment_info.shared_image_state.initial_layout.value();
-        }
-        else
-        {
-            image_create_info.initialLayout = render_attachment_image_state.initial_layout.value();
-        }
-
-        // Unique
-
-        image_create_info.format = render_attachment_image_state.format.value();
-        image_create_info.usage = render_attachment_image_state.usage.value();
-
-        VkImageViewCreateInfo image_view_create_info {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0x0,
-            .image = VK_NULL_HANDLE,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = image_create_info.format,
-            .components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY},
-            .subresourceRange = {
-                .aspectMask = (image_create_info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            }
-        };
-
-        render_attachment_list.emplace_back(image_create_info, image_view_create_info, init_info.frame_resource_count);
-
-
-        image_memory_barrier.oldLayout = image_create_info.initialLayout;
-
-        if (image_create_info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-        {
-            image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        }
-        else
-        {
-            ASSERT(image_create_info.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, "Render attachment must be of type color or depth (not both)!\n");
-            image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-            image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        }
-
-        for (uint32_t i = 0; i < init_info.frame_resource_count; i++)
-        {
-            image_memory_barrier.image = render_attachment_list.back().vk_handle_image_list[i];
-            image_memory_barriers.push_back(image_memory_barrier);
-        }
-    }
-
-    const VkCommandPool vk_handle_cmd_pool = vk_core::create_command_pool(0x0);
-    const VkCommandBuffer vk_handle_cmd_buff = vk_core::allocate_command_buffer(vk_handle_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-
-    const VkCommandBufferBeginInfo cmd_buff_begin_info {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = nullptr,
-        .flags = 0x0,
-        .pInheritanceInfo = nullptr,
-    };
-
-    vkBeginCommandBuffer(vk_handle_cmd_buff, &cmd_buff_begin_info);
-
-    vkCmdPipelineBarrier(vk_handle_cmd_buff,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        0x0,
-        0, nullptr,
-        0, nullptr,
-        static_cast<uint32_t>(image_memory_barriers.size()), image_memory_barriers.data());
-
-    vkEndCommandBuffer(vk_handle_cmd_buff);
-
-    const VkPipelineStageFlags none_flag = VK_PIPELINE_STAGE_FLAG_BITS_MAX_ENUM;
-
-    const VkSubmitInfo submit_info {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = nullptr,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = nullptr,
-        .pWaitDstStageMask = &none_flag,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &vk_handle_cmd_buff,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = nullptr,
-    };
-
-    vk_core::queue_submit(1, &submit_info, VK_NULL_HANDLE);
-
-    vk_core::device_wait_idle();
-
-    vk_core::destroy_command_pool(vk_handle_cmd_pool);
-
-    return render_attachment_list;
-}
-
-static std::vector<RenderPass> create_render_passes(const renderer::InitInfo& init_info, std::unordered_map<std::string, uint32_t>& render_pass_name_to_id_umap)
-{
-    const auto json_data = read_json_file(init_info.app_config_file);
-    const JSONInfo_RenderPass render_pass_info = json_data.at("render-passes").get<JSONInfo_RenderPass>();
-    const JSONInfo_AppSortBin sortbin_info = json_data.at("sortbins").get<JSONInfo_AppSortBin>();
-
-    std::vector<RenderPass> render_pass_list;
-
-    for (const JSONInfo_RenderPass::State state : render_pass_info.state_list)
-    {
-        const uint32_t render_pass_id = state.id;
-
-        render_pass_name_to_id_umap[state.name] = render_pass_id;
-
-        // Iter through all sortbins to find sortbins assigned to this render pass
-
-        std::vector<uint32_t> sortbin_ids {};
-
-        for (const JSONInfo_AppSortBin::State& sortbin_state : sortbin_info.sortbin_list)
-        {
-            if (sortbin_state.render_pass_id == render_pass_id)
-            {
-                sortbin_ids.push_back(sortbin_state.id);
-            }
-        }
-
-        std::vector<RenderPass::ReadAttachmentPassInfo> input_attachment_pass_info_list;
-
-        for (const JSONInfo_RenderPass::ReadAttachmentState& read_attachment_state : state.input_attachment_list)
-        {
-            const RenderPass::ReadAttachmentPassInfo attachment_info {
-                .attachment_idx = read_attachment_state.id,
-                .image_layout = read_attachment_state.image_layout
-            };
-
-            input_attachment_pass_info_list.push_back(attachment_info);
-        }
-
-        std::vector<RenderPass::WriteAttachmentPassInfo> color_attachment_pass_info_list;
-
-        for (const JSONInfo_RenderPass::WriteAttachmentState& render_pass_attachment_state : state.color_attachment_list)
-        {
-            const RenderPass::WriteAttachmentPassInfo attachment_info {
-                .attachment_idx = render_pass_attachment_state.id,
-                .image_layout = render_pass_attachment_state.image_layout,
-                .load_op = render_pass_attachment_state.load_op,
-                .store_op = render_pass_attachment_state.store_op,
-                .clear_value = render_pass_attachment_state.clear_value
-            };
-
-            color_attachment_pass_info_list.push_back(attachment_info);
-        }
-
-        RenderPass::WriteAttachmentPassInfo depth_attachment_pass_info {
-            .attachment_idx = state.depth_attachment.id,
-            .image_layout = state.depth_attachment.image_layout,
-            .load_op = state.depth_attachment.load_op,
-            .store_op = state.depth_attachment.store_op,
-            .clear_value = state.depth_attachment.clear_value
-        };
-
-        RenderPass::InitInfo render_pass_init_info {
-            .frame_resource_count = init_info.frame_resource_count,
-            .supported_sortbin_id_list = std::move(sortbin_ids),
-            .read_attachment_pass_info_list = std::move(input_attachment_pass_info_list),
-            .write_color_attachment_pass_info_list = std::move(color_attachment_pass_info_list),
-            .write_depth_attachment_pass_info = std::move(depth_attachment_pass_info)
-        };
-
-        RenderPass render_pass(std::move(render_pass_init_info));
-
-        render_pass_list.push_back(render_pass);
-    }
-
-    return render_pass_list;
-}
-
-static std::vector<SortBin> create_sortbins(
-    const renderer::InitInfo& init_info,
-    const std::vector<RenderPass>& render_pass_list,
-    const std::vector<RenderPass::Attachment> render_attachment_list,
-    const VkDescriptorSetLayout vk_handle_frame_desc_set_layout,
-    std::unordered_map<std::string, uint16_t>& sortbin_name_to_id_umap)
-{
-    std::vector<SortBin> sortbin_list;
-
-    const auto app_json_data = read_json_file(init_info.app_config_file);
-    const auto sortbin_json_data = read_json_file(init_info.sortbin_config_file);
-    const auto sortbin_reflection_json_data = read_json_file(init_info.sortbin_reflection_config_file);
-
-    const JSONInfo_AppSortBin app_sortbin_data = app_json_data.at("sortbins").get<JSONInfo_AppSortBin>();
-    const JSONInfo_SortBin sortbin_data = sortbin_json_data.at("sortbins").get<JSONInfo_SortBin>();
-    const JSONInfo_SortBinReflection sortbin_reflection_data = sortbin_reflection_json_data.at("sortbin-reflections").get<JSONInfo_SortBinReflection>();
-
-    for (const JSONInfo_AppSortBin::State& app_sortbin_state : app_sortbin_data.sortbin_list)
-    {
-        ASSERT(sortbin_data.state_umap.contains(app_sortbin_state.name), "Sortbin %s not found in sortbin config file!\n", app_sortbin_state.name.c_str());
-        const JSONInfo_SortBin::State& sortbin_state = sortbin_data.state_umap.at(app_sortbin_state.name);
-        const RenderPass& render_pass = render_pass_list[app_sortbin_state.render_pass_id];
-
-        sortbin_name_to_id_umap[sortbin_state.sortbin_name] = app_sortbin_state.id;
-
-        // Pipeline State Processing
-
-        PipelineInfo pipeline_info; 
-
-        get_default_pipeline_states(init_info.window_width, init_info.window_height, pipeline_info);
-
-        process_pipeline_state(sortbin_state, pipeline_info, init_info.shader_root_path);
-
-        // Reflection Processing
-
-        const JSONInfo_SortBinReflection::State& sortbin_reflection_state = sortbin_reflection_data.state_umap.at(sortbin_state.sortbin_name);
-
-        // sortbin_reflection_state.
-
-        process_reflection_state(sortbin_reflection_state, vk_handle_frame_desc_set_layout, render_pass.get_desc_set_layout(), pipeline_info);
-
-        // Rendering Info
-
-        std::vector<VkFormat> color_attachment_format_list;
-
-        for (const RenderPass::WriteAttachmentPassInfo& attachment_pass_info : render_pass.write_color_attachment_pass_info_list)
-        {
-            const RenderPass::Attachment& attachment = render_attachment_list[attachment_pass_info.attachment_idx];
-            color_attachment_format_list.push_back(attachment.format);
-        }
-
-        const VkFormat depth_attachment_format = render_attachment_list[render_pass.write_depth_attachment_pass_info.attachment_idx].format;
-
-        const VkPipelineRenderingCreateInfo rendering_create_info {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-            .pNext = nullptr,
-            .viewMask = 0,
-            .colorAttachmentCount = static_cast<uint32_t>(color_attachment_format_list.size()),
-            .pColorAttachmentFormats = color_attachment_format_list.data(),
-            .depthAttachmentFormat = depth_attachment_format,
-            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
-        };
-
-        // Blending Info
-
-        const VkPipelineColorBlendAttachmentState blend_state_none {
-            .blendEnable = VK_FALSE,
-            .srcColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-            .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-            .colorBlendOp = VK_BLEND_OP_ADD,
-            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-            .alphaBlendOp = VK_BLEND_OP_ADD,
-            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-        };
-
-        for (const RenderPass::WriteAttachmentPassInfo& attachment_pass_info : render_pass.write_color_attachment_pass_info_list)
-        {
-            pipeline_info.color_blend_attachment_state_list.push_back(blend_state_none);
-        }
-
-        const VkPipelineColorBlendStateCreateInfo default_color_blend_state {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0x0,
-            .logicOpEnable = VK_FALSE,
-            .logicOp = VK_LOGIC_OP_COPY,
-            .attachmentCount = static_cast<uint32_t>(pipeline_info.color_blend_attachment_state_list.size()),
-            .pAttachments = pipeline_info.color_blend_attachment_state_list.data(),
-            .blendConstants = {0, 0, 0, 0}
-        };
-
-        pipeline_info.color_blend_state_create_info = default_color_blend_state;
-
-        // Pipeline Creation
-
-        const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info {
-            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .pNext = &rendering_create_info,
-            .flags = 0x0,
-            .stageCount = static_cast<uint32_t>(pipeline_info.shader_stage_create_info_list.size()),
-            .pStages = pipeline_info.shader_stage_create_info_list.data(),
-            .pVertexInputState = &pipeline_info.vertex_input_create_info,
-            .pInputAssemblyState = &pipeline_info.input_assembly_create_info,
-            .pTessellationState = nullptr,
-            .pViewportState = &pipeline_info.viewport_state_create_info,
-            .pRasterizationState = &pipeline_info.rasterization_state_create_info,
-            .pMultisampleState = &pipeline_info.multisample_state_create_info,
-            .pDepthStencilState = &pipeline_info.depth_stencil_state_create_info,
-            .pColorBlendState = &pipeline_info.color_blend_state_create_info,
-            .pDynamicState = nullptr,
-            .layout = pipeline_info.vk_handle_pipeline_layout,
-            .renderPass = VK_NULL_HANDLE,
-            .subpass = 0,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = 0,
-        };
-
-        SortBin sortbin {
-            .name = sortbin_state.sortbin_name,
-            .vk_handle_pipeline = vk_core::create_graphics_pipeline(graphics_pipeline_create_info),
-            .vk_handle_pipeline_layout = pipeline_info.vk_handle_pipeline_layout,
-            .vertex_type = 0,
-            .per_draw_data_type = 0,
-            .vk_handle_desc_set_layout_list = pipeline_info.vk_handle_desc_set_layout_list,
-            .descriptor_variable_material_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).variables,
-            .descriptor_variable_draw_umap = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).variables,
-            .material_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).size,
-            .material_data_block_end_padding_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(1).end_padding_size,
-            .draw_data_block_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).size,
-            .draw_data_block_end_padding_size = sortbin_reflection_state.desc_set_state_list.at(0).binding_list.at(2).end_padding_size,
-        };
-
-        sortbin_list.push_back(sortbin);
-
-        for (const VkPipelineShaderStageCreateInfo& shader_stage_create_info : pipeline_info.shader_stage_create_info_list)
-        {
-            vk_core::destroy_shader_module(shader_stage_create_info.module);
-        }
-    }
-
-    return sortbin_list;
-}
-
-static VkDescriptorSetLayout create_frame_desc_set_layout()
-{
-    const std::array<VkDescriptorSetLayoutBinding, 3> desc_set_layout_binding_list {{
-        {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
-            .pImmutableSamplers = nullptr,
-        },
-        {
-            .binding = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
-            .pImmutableSamplers = nullptr,
-        },
-        {
-            .binding = 2,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
-            .pImmutableSamplers = nullptr,
-        }
-    }};
-
-    const VkDescriptorSetLayoutCreateInfo desc_set_layout_create_info {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0x0,
-        .bindingCount = static_cast<uint32_t>(desc_set_layout_binding_list.size()),
-        .pBindings = desc_set_layout_binding_list.data(),
-    };
-
-    return vk_core::create_desc_set_layout(desc_set_layout_create_info);
-}
-
-static VkDescriptorPool create_global_desc_pool(const uint32_t frame_resource_count, const uint32_t render_pass_count, const uint32_t total_render_pass_input_attachment_count)
-{
-    const std::array<VkDescriptorPoolSize, 3> desc_pool_sizes {{
-        {
-            // 1 Frame UBO
-            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = frame_resource_count,
-        },
-        {
-            // 1 Material SSBO
-            // 1 Draw SSBO
-            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = frame_resource_count * 2,
-        },
-        {
-            // 1 Renderpass Input Attachment Array
-            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = frame_resource_count * total_render_pass_input_attachment_count,
-        }
-    }};
-
-    const uint32_t max_desc_sets = 
-        frame_resource_count * 1 +                              // 1 Frame Set per frame resource
-        frame_resource_count * render_pass_count; // 1 RenderPass Set (for each renderpass) per frame resou
-
-
-    const VkDescriptorPoolCreateInfo desc_pool_create_info {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0x0,
-        .maxSets = max_desc_sets,
-        .poolSizeCount = static_cast<uint32_t>(desc_pool_sizes.size()),
-        .pPoolSizes = desc_pool_sizes.data()
-    };
-
-    return vk_core::create_desc_pool(desc_pool_create_info);
-}
-
-static void init_render_passes(const uint32_t frame_resource_count, const VkDescriptorPool vk_handle_desc_pool, const std::vector<RenderPass::Attachment>& render_attachment_list, std::vector<RenderPass>& render_pass_list)
-{
-    RenderPass::create_input_attachment_sampler();
-
-    for (RenderPass& render_pass : render_pass_list)
-    {
-        render_pass.init_desc_sets(frame_resource_count, vk_handle_desc_pool, render_attachment_list);
-    }
-}
-
-static std::vector<VkDescriptorSet> create_frame_desc_sets(const uint32_t frame_resource_count, const VkDescriptorSetLayout vk_handle_desc_set_layout, const VkDescriptorPool vk_handle_desc_pool)
-{
-    const std::vector<VkDescriptorSetLayout> vk_handle_desc_set_layout_list(frame_resource_count, vk_handle_desc_set_layout);
-
-    const VkDescriptorSetAllocateInfo desc_set_alloc_info {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = nullptr,
-        .descriptorPool = vk_handle_desc_pool,
-        .descriptorSetCount = static_cast<uint32_t>(vk_handle_desc_set_layout_list.size()),
-        .pSetLayouts = vk_handle_desc_set_layout_list.data()
-    };
-
-    return vk_core::allocate_desc_sets(desc_set_alloc_info);
-}
+#if 0
 
 static void init_frame_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list)
 {
@@ -631,6 +143,8 @@ static bool queue_uploads_to_staging_buffer(BufferPool_VariableBlock* buffer, St
     return !queued_uploads.empty();
 }
 
+#endif
+
 namespace renderer
 {
 // There is only one descriptor set.
@@ -671,129 +185,39 @@ namespace renderer
 // -- Create draw_id
 // -- Add supported_sortbin_set_id to renderable
 
-struct Material
-{
-    uint32_t ID;
-    uint32_t supported_sortbin_set_ID;
-};
+// struct Material
+// {
+//     uint32_t ID;
+//     uint32_t supported_sortbin_set_ID;
+// };
 
+// #include <memory>
 
-struct GlobalState
-{
-    GeometryBuffer*           geometry_buffer = nullptr;
-    UniformBuffer*            frame_uniform_buffer = nullptr;
-    BufferPool_VariableBlock* material_data_buffer = nullptr;
-    BufferPool_VariableBlock* draw_data_buffer = nullptr;
-    StagingBuffer*            staging_buffer = nullptr;
-
-    // Maps material_name -> Material Object 
-    // Exists to support material sharing across draws
-    std::unordered_map<std::string, Material> material_umap;
-
-    // Maps render_pass_name -> RenderPass ID (index into render_pass_list)
-    std::unordered_map<std::string, uint32_t> render_pass_name_to_id_umap;
-
-    // Maps sortbin_name -> Sortbin ID (index into sortbin_list)
-    std::unordered_map<std::string, uint16_t> sortbin_name_to_id_umap;
-
-} global_state;
-
-static std::vector<Renderable> global_renderable_list {};
-static std::vector<Mesh> global_mesh_list; 
-
-static std::vector<RenderPass::Attachment> global_render_attachment_list;
-static std::vector<RenderPass> global_render_pass_list;
-static std::vector<SortBin> global_sortbin_list;
-
-static VkDescriptorPool vk_handle_global_desc_pool;
-static VkDescriptorSetLayout        vk_handle_frame_desc_set_layout;
-static std::vector<VkDescriptorSet> vk_handle_frame_desc_set_list;
-
-
-
-
-
-
+std::unique_ptr<RendererState> global_state = nullptr;
 
 void init(const InitInfo& init_info)
 {
-    const VkBufferCreateInfo geom_buffer_create_info {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0x0,
-        .size = 1024 * 1024, 
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = nullptr
+    const RendererState::CreateInfo renderer_internal_create_info {
+        .refl_file_frame_desc_set_def = init_info.refl_file_frame_desc_set_def,
+        .refl_file_sortbin_mat_draw_def = init_info.refl_file_sortbin_mat_draw_def,
+        .file_sortbin_pipeline_state = init_info.file_sortbin_pipeline_state,
+        .file_app_state = init_info.file_app_state,
+        .path_shader_root = init_info.path_shader_root,
+        .frame_resource_count = init_info.frame_resource_count,
+        .window_x_dim = init_info.window_width,
+        .window_y_dim = init_info.window_height
     };
 
-    const std::unordered_map<std::string, DescriptorVariable> frame_uniform_refl_set {{
-        { "proj_mat", { "proj_mat", 0,  64 } },
-        { "view_mat", { "view_mat", 64, 64 } },
-    }};
-
-    global_state.geometry_buffer = new GeometryBuffer(geom_buffer_create_info);
-    global_state.staging_buffer = new StagingBuffer(1024 * 1024);
-    global_state.frame_uniform_buffer = new UniformBuffer(init_info.frame_resource_count, 128, std::move(frame_uniform_refl_set));
-    global_state.material_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
-    global_state.draw_data_buffer = new BufferPool_VariableBlock(init_info.frame_resource_count, 1024);
-
-
-
-
-
-    global_render_pass_list         = create_render_passes(init_info, global_state.render_pass_name_to_id_umap);
-    global_render_attachment_list   = create_render_attachments(init_info);
-    vk_handle_global_desc_pool      = create_global_desc_pool(init_info.frame_resource_count, global_render_pass_list.size(), RenderPass::get_input_attachment_count());
-    vk_handle_frame_desc_set_layout = create_frame_desc_set_layout();
-    vk_handle_frame_desc_set_list   = create_frame_desc_sets(init_info.frame_resource_count, vk_handle_frame_desc_set_layout, vk_handle_global_desc_pool);
-    global_sortbin_list             = create_sortbins(init_info, global_render_pass_list, global_render_attachment_list, vk_handle_frame_desc_set_layout, global_state.sortbin_name_to_id_umap);
-
-    init_render_passes(init_info.frame_resource_count, vk_handle_global_desc_pool, global_render_attachment_list, global_render_pass_list);
-    init_frame_desc_sets(init_info.frame_resource_count, global_state.frame_uniform_buffer, global_state.material_data_buffer, global_state.draw_data_buffer, vk_handle_frame_desc_set_list);
+    global_state = std::make_unique<RendererState>(renderer_internal_create_info);
 }
 
 void terminate()
 {
-    delete global_state.geometry_buffer;
-    delete global_state.frame_uniform_buffer;
-    delete global_state.material_data_buffer;
-    delete global_state.draw_data_buffer;
-    delete global_state.staging_buffer;
-
-    vk_core::destroy_desc_pool(vk_handle_global_desc_pool);
-    vk_core::destroy_desc_set_layout(vk_handle_frame_desc_set_layout);
-
-    for (const SortBin& sortbin : global_sortbin_list)
-    {
-        for (const VkDescriptorSetLayout vk_handle_desc_set_layout : sortbin.vk_handle_desc_set_layout_list)
-        {
-            vk_core::destroy_desc_set_layout(vk_handle_desc_set_layout);
-        }
-
-        vk_core::destroy_pipeline_layout(sortbin.vk_handle_pipeline_layout);
-        vk_core::destroy_pipeline(sortbin.vk_handle_pipeline);
-    }
-
-    for (const RenderPass::Attachment& attachment : global_render_attachment_list)
-    {
-        for (const VkImage vk_handle_image : attachment.vk_handle_image_list)
-        {
-            vk_core::destroy_image(vk_handle_image);
-        }
-
-        for (const VkImageView vk_handle_image_view : attachment.vk_handle_image_view_list)
-        {
-            vk_core::destroy_image_view(vk_handle_image_view);
-        }
-
-        for (const VkDeviceMemory vk_handle_image_memory : attachment.vk_handle_image_memory_list)
-        {
-            vk_core::free_memory(vk_handle_image_memory);
-        }
-    }
+    global_state.reset();
 }
+
+#if 0
+
 
 void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx)
 {
@@ -858,7 +282,11 @@ void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sort
     const Renderable& renderable = global_renderable_list[renderable_id];
     const Mesh& mesh = global_mesh_list[renderable.mesh_id];
 
-    // Check for supported set here
+    if (global_state.supported_sortbin_set_ID_list[renderable.default_sortbin_id] != global_state.supported_sortbin_set_ID_list[sortbin_id])
+    {
+        LOG("Sortbin %d not supported by renderable %d!\n", sortbin_id, renderable_id);
+        return;
+    }
 
     const DrawInfo draw_info {
         .index_count = mesh.index_count,
@@ -1076,5 +504,7 @@ void update_uniform(const BufferType buffer_type, const std::string& uniform_nam
         }
     };
 }
+
+#endif
 
 }; // renderer

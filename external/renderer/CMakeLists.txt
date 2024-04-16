@@ -1,13 +1,11 @@
 add_library(renderer STATIC 
     src/renderer.cpp
-    src/common/BufferPool_VariableBlock.hpp
-    src/common/GeometryBuffer.hpp
-    src/common/RenderPass.hpp
-    src/common/StagingBuffer.hpp
-    src/common/loader_shared.hpp
-    src/common/loader_renderpass.hpp
-    src/common/loader_sortbin.hpp
-    src/common/vk_enum_to_string.hpp)
+    src/GlobalState.cpp src/GlobalState.hpp
+    src/RenderPass.cpp src/RenderPass.hpp
+    src/internal/buffers/BufferPool_VariableBlock.cpp src/internal/buffers/BufferPool_VariableBlock.hpp
+    src/internal/buffers/GeometryBuffer.cpp src/internal/buffers/GeometryBuffer.hpp
+    src/internal/buffers/StagingBuffer.cpp src/internal/buffers/StagingBuffer.hpp
+    src/internal/buffers/UniformBuffer.cpp src/internal/buffers/UniformBuffer.hpp)
 
 message(STATUS ${vk_core_INCLUDE_DIRS})
 
@@ -16,6 +14,7 @@ target_include_directories(renderer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third-party)
 
 target_include_directories(renderer PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${vk_core_INCLUDE_DIRS}
     vk_core_INCLUDE_DIRS)

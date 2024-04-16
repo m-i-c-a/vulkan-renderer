@@ -20,8 +20,6 @@ struct DrawData
 
 #include "frame_desc_bindings.glsl"
 
-layout(set=1, binding=0) uniform sampler2D Pass_InputAttachments[1];
-
 void main()
 {
     DrawData draw_data = frame_draw_ssbo.data[gl_InstanceIndex];

@@ -3,16 +3,19 @@
 
 #include <string>
 #include <inttypes.h>
+// #include <unordered_map>
 
 struct DescriptorVariable 
 {
     std::string name;
     uint32_t offset;
     uint32_t size;
+    uint32_t count;
+    // std::unordered_map<std::string, DescriptorVariable> internal_structure;
 
     bool operator==(const DescriptorVariable& other) const
     {
-        return name == other.name;
+        return name == other.name && offset == other.offset && size == other.size;
     };
 
     struct Hash

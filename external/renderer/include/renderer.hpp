@@ -1,7 +1,7 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
-#include "Renderable.hpp"
+// #include "Renderable.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -28,14 +28,16 @@ namespace renderer
     {
         const uint32_t window_width; 
         const uint32_t window_height; 
-        const uint32_t frame_resource_count; 
+        const uint8_t frame_resource_count; 
 
-        const char* const app_config_file; 
-        const char* const sortbin_config_file;
-        const char* const sortbin_reflection_config_file;
-        const char* const shader_root_path;
+        const char* const refl_file_frame_desc_set_def;
+        const char* const refl_file_sortbin_mat_draw_def;
+        const char* const file_sortbin_pipeline_state;
+        const char* const file_app_state;
+        const char* const path_shader_root;
     };
 
+#if 0
     struct MeshInitInfo
     {
         uint32_t             vertex_stride;
@@ -63,15 +65,6 @@ namespace renderer
         uint16_t       default_sortbin_id;
     };
 
-    struct Renderable
-    {
-        uint32_t mesh_id;
-        uint32_t material_id;
-        uint32_t draw_id;
-        uint16_t default_sortbin_id;
-        uint16_t supported_sortbin_set_id;
-    };
-
     enum class BufferType
     {
         eGeometry,
@@ -80,7 +73,8 @@ namespace renderer
         eMaterial,
         eDraw,
     };
-
+#endif
+#if 0
     uint16_t get_sortbin_ID(const std::string& sortbin_name);
 
     uint32_t get_material_ID(const std::string& material_name);
@@ -96,9 +90,12 @@ namespace renderer
     void flush_staging_to_device(const VkCommandBuffer vk_handle_cmd_buff);
 
     void update_uniform(const BufferType buffer_type, const std::string& uniform_name, const void* const value, const uint32_t data_id = UINT32_MAX);
+#endif
 
     void init(const InitInfo& init_info);
     void terminate();
+
+#if 0
 
     void clear_renderables_in_sortbin();
 
@@ -112,7 +109,7 @@ namespace renderer
     void flush_frame_data_uploads(const uint32_t frame_resource_idx);
 
     VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_resource_idx);
-
+#endif
 }; // renderer
 
 #endif // RENDERER_HPP
