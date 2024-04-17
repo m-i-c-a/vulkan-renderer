@@ -1,12 +1,30 @@
 {
     "sortbins" : [
         {
-            "name" : "standard",
+            "name" : "default_v3_pos",
             "pipeline-state" : {
                 "shader-state" : [
                     "std.vert",
                     "std.frag"
                 ], 
+                "vertex-input-state" : {
+                    "vertex-input-binding-desc" : [
+                        {
+                            "binding" : 0,
+                            "stride" : 12,
+                            "input-rate" : "VK_VERTEX_INPUT_RATE_VERTEX"
+                        }
+                    ],
+                    "vertex-input-attrib-desc" : [
+                        {
+                            "usage" : "vertex_pos",
+                            "location" : 0,
+                            "binding" : 0,
+                            "format" : "VK_FORMAT_R32G32B32_SFLOAT",
+                            "offset" : 0
+                        }
+                    ]
+                },
                 "input-assembly-state" : {
                     "topology" : "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST"
                 },

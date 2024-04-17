@@ -63,6 +63,8 @@ RendererState::RendererState(const CreateInfo& create_info)
     staging_buffer = std::make_unique<StagingBuffer>(1 << 10);
     material_data_buffer = std::make_unique<BufferPool_VariableBlock>(create_info.frame_resource_count, 1 << 10);
     draw_data_buffer = std::make_unique<BufferPool_VariableBlock>(create_info.frame_resource_count, 1 << 10);
+
+    // Need to not harcode these!!!
     frame_general_ubo = create_frame_ubo(create_info, "Frame_UBO");
     frame_fwd_light_ubo = create_frame_ubo(create_info, "Frame_ForwardPointLightUBO");
 

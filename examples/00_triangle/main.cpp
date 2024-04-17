@@ -27,17 +27,17 @@ int main()
     GLFWwindow *glfw_window = glfwCreateWindow(static_cast<int>(window_width), static_cast<int>(window_height), "App", nullptr, nullptr);
     assert(glfw_window && "Failed to create window");
 
-    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/triangle/data/json/vulkan_state.json");
+    vk_core::init(window_width, window_height, glfw_window, "/home/mica/Desktop/clean-start/examples/00_triangle/data/json/vulkan_state.json");
 
     const renderer::InitInfo renderer_init_info {
         .window_width = window_width, 
         .window_height = window_height, 
         .frame_resource_count = frame_resource_count, 
-        .refl_file_frame_desc_set_def = "/home/mica/Desktop/clean-start/examples/triangle/data/json/reflection/frame_desc_set_reflection.json",
-        .refl_file_sortbin_mat_draw_def = "/home/mica/Desktop/clean-start/examples/triangle/data/json/reflection/sortbin_reflection.json",
-        .file_sortbin_pipeline_state = "/home/mica/Desktop/clean-start/examples/triangle/data/json/sortbin_pipeline_state.json",
-        .file_app_state = "/home/mica/Desktop/clean-start/examples/triangle/data/json/app_state.json", 
-        .path_shader_root = "/home/mica/Desktop/clean-start/examples/triangle/data/shaders/spirv/",
+        .refl_file_frame_desc_set_def = "/home/mica/Desktop/clean-start/examples/00_triangle/data/json/reflection/frame_desc_set_reflection.json",
+        .refl_file_sortbin_mat_draw_def = "/home/mica/Desktop/clean-start/examples/00_triangle/data/json/reflection/sortbin_reflection.json",
+        .file_sortbin_pipeline_state = "/home/mica/Desktop/clean-start/examples/00_triangle/data/json/sortbin_pipeline_state.json",
+        .file_app_state = "/home/mica/Desktop/clean-start/examples/00_triangle/data/json/app_state.json", 
+        .path_shader_root = "/home/mica/Desktop/clean-start/examples/00_triangle/data/shaders/spirv/",
     };
 
     renderer::init(renderer_init_info);
