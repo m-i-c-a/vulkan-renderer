@@ -1,8 +1,6 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
-// #include "Renderable.hpp"
-
 #include <vulkan/vulkan.h>
 
 #include <stdint.h>
@@ -90,28 +88,7 @@ namespace renderer
     void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx);
 
     VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_resource_idx);
-
-#if 0
     uint16_t get_sortbin_ID(const std::string& sortbin_name);
-
-    uint32_t get_material_ID(const std::string& material_name);
-
-
-
-
-
-
-    void clear_renderables_in_sortbin();
-
-    void update_frame_uniform(const std::string& uniform_name, const void* const value);
-    void update_material_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
-    void update_draw_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
-
-
-    void flush_staging_buffer(const VkCommandBuffer vk_handle_cmd_buff);
-    void flush_frame_data_uploads(const uint32_t frame_resource_idx);
-
-#endif
 }; // renderer
 
 #endif // RENDERER_HPP
