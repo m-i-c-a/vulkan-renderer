@@ -2,8 +2,9 @@
 #define RENDERER_GLOBAL_STATE_HPP
 
 #include "RenderPass.hpp"
-#include "internal/pod/Renderable.hpp"
+#include "internal/pod/Material.hpp"
 #include "internal/pod/Mesh.hpp"
+#include "internal/pod/Renderable.hpp"
 
 #include <inttypes.h>
 #include <string>
@@ -32,8 +33,11 @@ struct RendererState
 
     std::vector<SortBin> sort_bin_vec;
 
+    std::unordered_map<std::string, uint32_t> name_id_lut_material;
+
     std::vector<Renderable> renderable_vec;
     std::vector<Mesh> mesh_vec; 
+    std::vector<Material> material_vec;
 
     std::unique_ptr<UniformBuffer>            frame_general_ubo;
     std::unique_ptr<UniformBuffer>            frame_fwd_light_ubo;

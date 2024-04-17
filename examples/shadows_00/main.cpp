@@ -89,6 +89,11 @@ int main()
 
     renderer::init(renderer_init_info);
 
+    while (!glfwWindowShouldClose(glfw_window))
+    {
+        glfwPollEvents();
+    }
+
     renderer::terminate();
     vk_core::terminate();
 

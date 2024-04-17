@@ -4,12 +4,11 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/home/mica/Desktop/clean-start/bin/shadows_00",
+            "program": "/home/mica/Desktop/clean-start/bin/triangle",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",

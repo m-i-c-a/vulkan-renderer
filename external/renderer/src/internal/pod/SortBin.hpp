@@ -26,7 +26,7 @@ struct SortBin
     const VkPipelineLayout vk_handle_pipeline_layout;
     const VkDescriptorSet vk_handle_desc_set;
 
-    const uint8_t supported_sortbin_set;
+    const uint8_t compatible_sort_bin_set_ID;
 
     // Runtime
     std::vector<DrawInfo> draw_list_u32;

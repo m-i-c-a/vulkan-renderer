@@ -37,7 +37,6 @@ namespace renderer
         const char* const path_shader_root;
     };
 
-#if 0
     struct MeshInitInfo
     {
         uint32_t             vertex_stride;
@@ -53,7 +52,7 @@ namespace renderer
         std::string    name;
         const uint8_t* material_data_ptr;
         uint32_t       material_data_size;
-        uint16_t       default_sortbin_ID;
+        std::string    default_sort_bin_name;
     };
 
     struct RenderableInitInfo
@@ -62,7 +61,7 @@ namespace renderer
         uint32_t       material_ID;
         const uint8_t* draw_data_ptr;
         uint32_t       draw_data_size;
-        uint16_t       default_sortbin_id;
+        std::string    default_sort_bin_name;
     };
 
     enum class BufferType
@@ -73,29 +72,34 @@ namespace renderer
         eMaterial,
         eDraw,
     };
-#endif
-#if 0
-    uint16_t get_sortbin_ID(const std::string& sortbin_name);
 
-    uint32_t get_material_ID(const std::string& material_name);
+    void init(const InitInfo& init_info);
+    void terminate();
 
     uint32_t create_mesh(const MeshInitInfo& init_info);
     uint32_t create_material(const MaterialInitInfo& init_info, const uint32_t frame_resource_idx);
     std::pair<uint32_t, uint16_t> create_renderable(const RenderableInitInfo& init_info, const uint32_t frame_resource_idx);
 
-    void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id);
+    void update_uniform(const BufferType buffer_type, const std::string& uniform_name, const void* const value, const uint32_t data_id = UINT32_MAX);
 
     void flush_coherent_buffer_uploads(const BufferType buffer_type, const uint32_t frame_resource_idx);
     bool flush_buffer_uploads_to_staging(const BufferType buffer_type, const uint32_t frame_resource_idx);
     void flush_staging_to_device(const VkCommandBuffer vk_handle_cmd_buff);
 
-    void update_uniform(const BufferType buffer_type, const std::string& uniform_name, const void* const value, const uint32_t data_id = UINT32_MAX);
-#endif
+    void add_renderable_to_sortbin(const uint32_t renderable_id, const uint16_t sortbin_id);
+    void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx);
 
-    void init(const InitInfo& init_info);
-    void terminate();
+    VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_resource_idx);
 
 #if 0
+    uint16_t get_sortbin_ID(const std::string& sortbin_name);
+
+    uint32_t get_material_ID(const std::string& material_name);
+
+
+
+
+
 
     void clear_renderables_in_sortbin();
 
@@ -103,12 +107,10 @@ namespace renderer
     void update_material_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
     void update_draw_uniform(const uint32_t renderable_id, const std::string& member_name, const void* const data);
 
-    void record_render_pass(const std::string& render_pass_name, const VkCommandBuffer vk_handle_cmd_buff, const VkRect2D render_area, const uint32_t frame_resource_idx);
 
     void flush_staging_buffer(const VkCommandBuffer vk_handle_cmd_buff);
     void flush_frame_data_uploads(const uint32_t frame_resource_idx);
 
-    VkImage get_attachment_image(const uint32_t attachment_id, const uint32_t frame_resource_idx);
 #endif
 }; // renderer
 

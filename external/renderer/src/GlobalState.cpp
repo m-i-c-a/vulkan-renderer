@@ -44,6 +44,8 @@ static std::vector<VkPipelineColorBlendAttachmentState> create_color_blend_attac
 static VkPipelineColorBlendStateCreateInfo create_color_blend_state(const std::vector<VkPipelineColorBlendAttachmentState>& color_blend_attachment_state_vec);
 static std::unordered_map<std::string, DescriptorVariable> create_desc_var_umap(const std::vector<JSONInfo_DescriptorVariable>& json_desc_var_list);
 static std::vector<SortBin> init_vec_sort_bin(const RendererState::CreateInfo& create_info, const std::vector<RenderPass>& render_pass_vec, const std::vector<RenderPass::Attachment> render_attachment_list, const std::unordered_map<std::string, uint16_t>& name_id_lut_render_pass, const VkDescriptorSetLayout vk_handle_frame_desc_set_layout);
+static std::unique_ptr<UniformBuffer> create_frame_ubo(const RendererState::CreateInfo& create_info, const std::string& ubo_name);
+static void update_frame_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const UniformBuffer* frame_fwd_light_ubo, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list);
 
 RendererState::RendererState(const CreateInfo& create_info)
     : name_id_lut_render_attachment { init_id_lut_render_attachment(create_info) }
@@ -57,13 +59,14 @@ RendererState::RendererState(const CreateInfo& create_info)
     , compatible_sortbin_ID_lut{ init_vec_compatible_sortbin_ID(create_info, name_id_lut_sort_bin) }
 {
     sort_bin_vec = init_vec_sort_bin(create_info, render_pass_vec, render_attachment_vec, name_id_lut_render_pass, vk_handle_frame_desc_set_layout);
-
     geometry_buffer = std::make_unique<GeometryBuffer>(1 << 10);
     staging_buffer = std::make_unique<StagingBuffer>(1 << 10);
     material_data_buffer = std::make_unique<BufferPool_VariableBlock>(create_info.frame_resource_count, 1 << 10);
     draw_data_buffer = std::make_unique<BufferPool_VariableBlock>(create_info.frame_resource_count, 1 << 10);
-    frame_general_ubo = std::make_unique<UniformBuffer>(create_info.frame_resource_count, 1, std::unordered_map<std::string, DescriptorVariable>{});
-    frame_fwd_light_ubo = std::make_unique<UniformBuffer>(create_info.frame_resource_count, 1, std::unordered_map<std::string, DescriptorVariable>{});
+    frame_general_ubo = create_frame_ubo(create_info, "Frame_UBO");
+    frame_fwd_light_ubo = create_frame_ubo(create_info, "Frame_ForwardPointLightUBO");
+
+    update_frame_desc_sets(create_info.frame_resource_count, frame_general_ubo.get(), material_data_buffer.get(), draw_data_buffer.get(), frame_fwd_light_ubo.get(), vk_handle_frame_desc_set_vec);
 }
 
 RendererState::~RendererState()
@@ -481,13 +484,22 @@ static VkDescriptorPool init_desc_pool(const RendererState::CreateInfo& create_i
     }
 
     uint32_t render_pass_input_attachment_count = 0u;
+    uint32_t render_pass_set_count = 0u; 
 
     for (const RenderPass& render_pass : render_pass_vec)
     {
         render_pass_input_attachment_count += render_pass.read_attachment_pass_info_list.size();
+        if (render_pass.read_attachment_pass_info_list.size() > 0)
+        {
+            render_pass_set_count++;
+        }
     }
 
-    desc_type_count_umap[VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] += render_pass_input_attachment_count * create_info.frame_resource_count;
+    if (render_pass_set_count > 0)
+    {
+        desc_type_count_umap[VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER] += render_pass_input_attachment_count * create_info.frame_resource_count;
+    }
+
 
     std::vector<VkDescriptorPoolSize> desc_pool_size_vec;
 
@@ -498,7 +510,7 @@ static VkDescriptorPool init_desc_pool(const RendererState::CreateInfo& create_i
 
     const uint32_t max_desc_sets = 
         create_info.frame_resource_count * 1 +                     // 1 Frame Set per frame resource
-        create_info.frame_resource_count * render_pass_vec.size(); // 1 RenderPass Set (for each renderpass) per frame resource
+        create_info.frame_resource_count * render_pass_set_count;  // 1 RenderPass Set (for each renderpass) per frame resource
 
     const VkDescriptorPoolCreateInfo desc_pool_create_info {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -1018,32 +1030,31 @@ static std::unordered_map<std::string, DescriptorVariable> create_desc_var_umap(
 
     for (const JSONInfo_DescriptorVariable& json_desc_var : json_desc_var_list)
     {
-        std::unordered_map<std::string, DescriptorVariable> internal_desc_var_umap;
+        std::unordered_map<std::string, InternalDesctriptorVariable> internal_desc_var_umap;
 
-        // for (const JSONInfo_DescriptorVariable& internal_json_desc_var : json_desc_var.internal_structure)
-        // {
-        //     ASSERT(internal_json_desc_var.internal_structure.empty(), "Double internal descriptor structures are not supported!\n");
+        for (const JSONInfo_DescriptorVariable& internal_json_desc_var : json_desc_var.internal_structure)
+        {
+            ASSERT(internal_json_desc_var.internal_structure.empty(), "Double internal descriptor structures are not supported!\n");
 
-        //     const DescriptorVariable desc_var {
-        //         .name = json_desc_var.name,
-        //         .offset = json_desc_var.offset,
-        //         .size   = json_desc_var.size,
-        //         .count = json_desc_var.count,
-        //         .internal_structure = {}
-        //     };
+            const InternalDesctriptorVariable internal_desc_var {
+                .name = internal_json_desc_var.name,
+                .offset = internal_json_desc_var.offset,
+                .size = internal_json_desc_var.size,
+                .count = internal_json_desc_var.count,
+            };
 
-        //     internal_desc_var_umap.insert({internal_json_desc_var.name, desc_var});
-        // }
+            internal_desc_var_umap.emplace(internal_json_desc_var.name, internal_desc_var);
+        }
 
-        const DescriptorVariable desc_var {
+        DescriptorVariable desc_var {
             .name = json_desc_var.name,
             .offset = json_desc_var.offset,
             .size   = json_desc_var.size,
             .count = json_desc_var.count,
-            // .internal_structure = internal_desc_var_umap
+            .internal_structure = std::move(internal_desc_var_umap)
         };
 
-        desc_var_umap.insert({json_desc_var.name, desc_var});
+        desc_var_umap.emplace(json_desc_var.name, desc_var);
     }
 
     return desc_var_umap;
@@ -1104,11 +1115,7 @@ static std::vector<SortBin> init_vec_sort_bin(
         // Blending Info
         const auto color_blend_attachment_state_vec = create_color_blend_attachment_state_vec(render_pass);
         const auto color_blend_state = create_color_blend_state(color_blend_attachment_state_vec);
-
-        // Material / Draw Definition
         
-        create_desc_var_umap(sort_bin_reflection_state.definition_draw_data.members);
-
         // Pipeline Creation
         const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -1132,7 +1139,7 @@ static std::vector<SortBin> init_vec_sort_bin(
             .basePipelineIndex = 0,
         };
 
-        const SortBin sortbin {
+        SortBin sortbin {
             .name = sort_bin_app_state.name,
             .descriptor_variable_material_umap = create_desc_var_umap(sort_bin_reflection_state.definition_material_data.members),
             .descriptor_variable_draw_umap = create_desc_var_umap(sort_bin_reflection_state.definition_draw_data.members),
@@ -1144,7 +1151,7 @@ static std::vector<SortBin> init_vec_sort_bin(
             .vk_handle_pipeline_layout = vk_handle_pipeline_layout
         };
 
-        sortbin_list.push_back(sortbin);
+        sortbin_list.push_back(std::move(sortbin));
 
         for (const VkPipelineShaderStageCreateInfo& shader_stage_create_info : shader_stage_vec)
         {
@@ -1153,4 +1160,94 @@ static std::vector<SortBin> init_vec_sort_bin(
     }
 
     return sortbin_list;
+}
+
+static std::unique_ptr<UniformBuffer> create_frame_ubo(const RendererState::CreateInfo& create_info, const std::string& ubo_name)
+{
+    const auto json_data_frame_desc_refl = read_json_file(create_info.refl_file_frame_desc_set_def);
+    const auto frame_desc_set_binding_vec = json_data_frame_desc_refl.at("bindings").get<std::vector<JSONInfo_DescriptorBinding>>();
+
+    uint64_t size = 0lu;
+    std::unordered_map<std::string, DescriptorVariable> desc_var_umap;
+
+    for (const auto& binding_state : frame_desc_set_binding_vec)
+    {
+        if (binding_state.name == ubo_name)
+        {
+            for (const auto& desc_var : binding_state.buffer_variables)
+            {
+                size += desc_var.size;
+            }
+            desc_var_umap = create_desc_var_umap(binding_state.buffer_variables);
+            break;
+        }
+    }
+
+    ASSERT(size != 0lu, "Uniform Buffer %s not found in frame descriptor reflection file!\n", ubo_name.c_str());
+
+    return std::make_unique<UniformBuffer>(create_info.frame_resource_count, size, std::move(desc_var_umap));
+}
+
+static void update_frame_desc_sets(const uint32_t frame_resource_count, const UniformBuffer* frame_uniform_buffer, const BufferPool_VariableBlock* material_data_buffer, const BufferPool_VariableBlock* draw_data_buffer, const UniformBuffer* frame_fwd_light_ubo, const std::vector<VkDescriptorSet>& vk_handle_desc_set_list)
+{
+    for (uint32_t i = 0; i < frame_resource_count; i++)
+    {
+        const VkDescriptorBufferInfo frame_ubo_desc_buffer_info = frame_uniform_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo mat_ssbo_desc_buffer_info = material_data_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo draw_ssbo_desc_buffer_info = draw_data_buffer->get_descriptor_buffer_info(i);
+        const VkDescriptorBufferInfo frame_fwd_light_ubo_desc_buffer_info = frame_fwd_light_ubo->get_descriptor_buffer_info(i);
+
+        const std::array<VkWriteDescriptorSet, 4> write_desc_set_list {{
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_desc_set_list[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &frame_ubo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_desc_set_list[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &mat_ssbo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_desc_set_list[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &draw_ssbo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = nullptr,
+                .dstSet = vk_handle_desc_set_list[i],
+                .dstBinding = 3,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &frame_fwd_light_ubo_desc_buffer_info,
+                .pTexelBufferView = nullptr,
+            },
+        }};
+
+        vk_core::update_desc_sets(static_cast<uint32_t>(write_desc_set_list.size()), write_desc_set_list.data(), 0, nullptr);
+    }
 }

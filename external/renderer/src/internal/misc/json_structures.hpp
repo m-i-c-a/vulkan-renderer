@@ -16,7 +16,7 @@ struct JSONInfo_DescriptorVariable
     uint32_t offset;
     uint32_t size;
     uint32_t count;
-    // std::vector<JSONInfo_DescriptorVariable> internal_structure;
+    std::vector<JSONInfo_DescriptorVariable> internal_structure;
 
     struct Hash
     {
@@ -32,7 +32,7 @@ struct JSONInfo_DescriptorVariable
                offset == other.offset &&
                size == other.size &&
                count == other.count;
-            //    internal_structure == other.internal_structure;
+               internal_structure == other.internal_structure;
     }
 };
 
@@ -42,7 +42,7 @@ void from_json(const nlohmann::json& json_data, JSONInfo_DescriptorVariable& inf
     info.offset = json_data.at("offset").get<uint32_t>();
     info.size = json_data.at("size").get<uint32_t>();
     info.count = json_data.at("count").get<uint32_t>();
-    // info.internal_structure = json_data.at("internal_structure").get<std::vector<JSONInfo_DescriptorVariable>>();
+    info.internal_structure = json_data.at("internal-structure").get<std::vector<JSONInfo_DescriptorVariable>>();
 }
 
 struct JSONInfo_DescriptorBinding

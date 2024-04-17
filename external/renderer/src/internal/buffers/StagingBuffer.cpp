@@ -42,7 +42,6 @@ void StagingBuffer::queue_upload(const VkBuffer vk_handle_dst_buffer, const VkDe
     m_dst_buffer_copy_map[vk_handle_dst_buffer].push_back(buffer_copy);
 }
 
-
 void StagingBuffer::flush(const VkCommandBuffer vk_handle_cmd_buff)
 {
     // LOG("Flushing staging buffer\n");
